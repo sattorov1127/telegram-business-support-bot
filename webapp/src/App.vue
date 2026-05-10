@@ -406,22 +406,11 @@
                 @keydown.enter.prevent="openProductMetricDetail('active')"
                 @keydown.space.prevent="openProductMetricDetail('active')">
                 <div class="metric-head">
-                  <div class="metric-label">Aktiv foydalanish</div>
+                  <div class="metric-label">Biznes aktiv</div>
                   <span class="metric-icon good">✅</span>
                 </div>
                 <div class="metric-value">{{ fmtNumber(productUsageSummary.active) }}</div>
-                <div class="metric-mini">{{ fmtPercent(productUsageSummary.active_rate) }} biznes aktiv</div>
-              </article>
-              <article class="card metric clickable-metric" role="button" tabindex="0"
-                title="Yuqori foydalanishdagi kompaniyalarni ko‘rish" @click="openProductMetricDetail('highUsage')"
-                @keydown.enter.prevent="openProductMetricDetail('highUsage')"
-                @keydown.space.prevent="openProductMetricDetail('highUsage')">
-                <div class="metric-head">
-                  <div class="metric-label">O‘rtacha foydalanish</div>
-                  <span class="metric-icon">📊</span>
-                </div>
-                <div class="metric-value">{{ fmtNumber(productUsageSummary.average_score) }}%</div>
-                <div class="metric-mini">{{ fmtNumber(productUsageSummary.high_usage) }} ta yuqori foydalanmoqda</div>
+                <div class="metric-mini">Biznes holati ACTIVE</div>
               </article>
               <article class="card metric clickable-metric" role="button" tabindex="0"
                 title="Riskdagi kompaniyalarni ko‘rish" @click="openProductMetricDetail('risk')"
@@ -434,48 +423,6 @@
                 <div class="metric-value">{{ fmtNumber(productUsageSummary.risk) }}</div>
                 <div class="metric-mini">{{ fmtNumber(productUsageSummary.expiring_soon) }} ta obuna yaqin</div>
               </article>
-            </div>
-
-            <div class="spacer"></div>
-
-            <div class="stats-charts">
-              <section class="card chart-card">
-                <div class="card-header">
-                  <div>
-                    <div class="card-title">Kompaniyalar foydalanish indeksi</div>
-                    <div class="card-note">Biznes holati, obuna holati va mas’ul biriktirilishiga qarab</div>
-                  </div>
-                </div>
-                <div class="chart-bars">
-                  <div v-for="row in productUsageChartRows" :key="row.id || row.name" class="chart-row">
-                    <div class="chart-label">{{ row.name || 'Kompaniya' }}</div>
-                    <div class="chart-track">
-                      <span class="chart-fill blue" :style="{ width: `${row.usage_score}%` }"></span>
-                    </div>
-                    <div class="chart-value">{{ fmtNumber(row.usage_score) }}%</div>
-                  </div>
-                  <div v-if="!productUsageChartRows.length" class="empty compact">Kompaniya ma’lumoti yo‘q</div>
-                </div>
-              </section>
-
-              <section class="card chart-card">
-                <div class="card-header">
-                  <div>
-                    <div class="card-title">Foydalanish darajalari</div>
-                    <div class="card-note">Yuqori, o‘rta va past foydalanishdagi kompaniyalar</div>
-                  </div>
-                </div>
-                <div class="chart-bars">
-                  <div v-for="row in usageLevelRows" :key="row.label" class="chart-row">
-                    <div class="chart-label">{{ row.label }}</div>
-                    <div class="chart-track">
-                      <span class="chart-fill" :class="row.color"
-                        :style="{ width: barWidth(row.count, usageLevelChartMax) }"></span>
-                    </div>
-                    <div class="chart-value">{{ fmtNumber(row.count) }}</div>
-                  </div>
-                </div>
-              </section>
             </div>
 
             <div class="spacer"></div>
@@ -1975,12 +1922,6 @@
             <template #businessStatus="{ row }">
               <span class="status-pill mini" :class="businessStatusClass(row.business_status)">{{
                 businessStatusLabel(row.business_status) }}</span>
-            </template>
-            <template #usageScore="{ row }">
-              <span class="usage-score-cell">
-                <b>{{ fmtPercent(row.usage_score || 0) }}</b>
-                <small>{{ row.usage_level || '—' }}</small>
-              </span>
             </template>
           </DataTable>
         </div>
@@ -3564,25 +3505,6 @@ function isCompanyExpiringSoon(row = {}) {
   return row.expiry_state === 'soon';
 }
 
-function companyUsageScore(row = {}) {
-  const businessStatus = String(row.business_status || '').toUpperCase();
-  const days = Number(row.days_until_expiry);
-  let score = 0;
-  if (businessStatus === 'ACTIVE') score += 45;
-  else if (businessStatus === 'NEW') score += 26;
-  else if (businessStatus === 'PAUSED') score += 8;
-
-  if (Number.isFinite(days)) {
-    if (days > 30) score += 22;
-    else if (days >= 0) score += 12;
-  }
-  if (hasCompanySupport(row)) score += 12;
-  if (Number(row.auto_refresh_currencies || 0) === 1) score += 6;
-  if (row.last_activity) score += 15;
-  else if (businessStatus === 'ACTIVE') score += 8;
-  return Math.max(0, Math.min(100, score));
-}
-
 function normalizedCompanyName(value = '') {
   return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 }
@@ -3720,29 +3642,7 @@ function companyActivitySessionCount(row = {}) {
     + Number(chat.closed_requests || 0)
     + Number(chat.unique_customers || 0), 0);
   if (chatActions) return Math.round(chatActions);
-
-  const status = String(row.business_status || '').toUpperCase();
-  const statusBonus = status === 'ACTIVE' ? 35 : status === 'NEW' ? 18 : 6;
-  const supportBonus = hasCompanySupport(row) ? 12 : 0;
-  const refreshBonus = Number(row.auto_refresh_currencies || 0) === 1 ? 8 : 0;
-  const expiryBonus = row.expiry_state === 'ok' ? 14 : row.expiry_state === 'soon' ? 6 : 0;
-  return Math.max(1, Math.round(companyUsageScore(row) + statusBonus + supportBonus + refreshBonus + expiryBonus));
-}
-
-function companyUsageLevel(score = 0) {
-  const value = Number(score || 0);
-  if (value >= 75) return 'Yuqori';
-  if (value >= 45) return 'O‘rta';
-  return 'Past';
-}
-
-function enrichCompanyUsage(row = {}) {
-  const usageScore = companyUsageScore(row);
-  return {
-    ...row,
-    usage_score: usageScore,
-    usage_level: companyUsageLevel(usageScore)
-  };
+  return 0;
 }
 
 function parseCompanyDate(value) {
@@ -3805,14 +3705,13 @@ function timelineWidth(value, max) {
 }
 
 function enrichCompanyTimeline(row = {}) {
-  const enriched = enrichCompanyUsage(row);
   const start = parseCompanyDate(row.subscription_start_date || row.created_at_iso || row.created_at);
   const expiry = parseCompanyDate(row.expired);
   const now = new Date();
   const usageDays = start ? dayDiff(start, now) || 0 : 0;
   const subscriptionDays = start && expiry ? dayDiff(start, expiry) || 0 : 0;
   return {
-    ...enriched,
+    ...row,
     start_label: start ? fmtCompanyDate(start) : 'Boshlanish belgilanmagan',
     expiry_label: expiry ? fmtCompanyDate(expiry) : 'Muddatsiz',
     usage_days: usageDays,
@@ -3834,16 +3733,12 @@ function timelineFillClass(row = {}) {
 }
 
 function companyPortfolioSummary(rows = []) {
-  const enriched = rows.map(enrichCompanyUsage);
-  const totalScore = enriched.reduce((sum, row) => sum + Number(row.usage_score || 0), 0);
   return {
-    total: enriched.length,
-    active: enriched.filter(company => company.business_status === 'ACTIVE').length,
-    churn: enriched.filter(isCompanyChurn).length,
-    expiring_soon: enriched.filter(isCompanyExpiringSoon).length,
-    expired: enriched.filter(company => company.expiry_state === 'expired').length,
-    high_usage: enriched.filter(company => Number(company.usage_score || 0) >= 75).length,
-    average_score: enriched.length ? Math.round(totalScore / enriched.length) : 0
+    total: rows.length,
+    active: rows.filter(company => company.business_status === 'ACTIVE').length,
+    churn: rows.filter(isCompanyChurn).length,
+    expiring_soon: rows.filter(isCompanyExpiringSoon).length,
+    expired: rows.filter(company => company.expiry_state === 'expired').length
   };
 }
 
@@ -3929,10 +3824,9 @@ const companyAlerts = computed(() => visibleCompanyInfoRows.value
   .sort((a, b) => Number(a.days_until_expiry ?? 9999) - Number(b.days_until_expiry ?? 9999))
   .slice(0, 6));
 const productUsageRows = computed(() => visibleCompanyInfoRows.value
-  .map(enrichCompanyUsage)
-  .sort((a, b) => Number(b.usage_score || 0) - Number(a.usage_score || 0) || String(a.name || '').localeCompare(String(b.name || ''))));
+  .slice()
+  .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''))));
 const filteredProductUsageRows = computed(() => productUsageRows.value.filter(includesSearch));
-const productUsageChartRows = computed(() => productUsageRows.value.slice(0, 8));
 const rawSubscriptionTimelineRows = computed(() => filteredProductUsageRows.value
   .map(enrichCompanyTimeline)
   .sort((a, b) => Number(b.usage_days || 0) - Number(a.usage_days || 0) || String(a.name || '').localeCompare(String(b.name || ''))));
@@ -3947,8 +3841,7 @@ const productUsageSummary = computed(() => {
   const summary = companyPortfolioSummary(productUsageRows.value);
   return {
     ...summary,
-    risk: productUsageRows.value.filter(row => isCompanyChurn(row) || ['expired', 'soon'].includes(row.expiry_state)).length,
-    active_rate: summary.total ? Math.round((summary.active / summary.total) * 100) : 0
+    risk: productUsageRows.value.filter(row => isCompanyChurn(row) || ['expired', 'soon'].includes(row.expiry_state)).length
   };
 });
 const businessStatusRows = computed(() => [
@@ -3957,12 +3850,6 @@ const businessStatusRows = computed(() => [
   { label: 'Churn/Pauza', count: productUsageRows.value.filter(isCompanyChurn).length, color: 'orange' }
 ]);
 const businessStatusChartMax = computed(() => Math.max(1, ...businessStatusRows.value.map(row => Number(row.count || 0))));
-const usageLevelRows = computed(() => [
-  { label: 'Yuqori', count: productUsageRows.value.filter(row => Number(row.usage_score || 0) >= 75).length, color: 'green' },
-  { label: 'O‘rta', count: productUsageRows.value.filter(row => Number(row.usage_score || 0) >= 45 && Number(row.usage_score || 0) < 75).length, color: 'blue' },
-  { label: 'Past', count: productUsageRows.value.filter(row => Number(row.usage_score || 0) < 45).length, color: 'orange' }
-]);
-const usageLevelChartMax = computed(() => Math.max(1, ...usageLevelRows.value.map(row => Number(row.count || 0))));
 const subscriptionStatusRows = computed(() => [
   { label: 'Barqaror', count: productUsageRows.value.filter(row => row.expiry_state === 'ok').length, color: 'green' },
   { label: 'Yaqin tugaydi', count: productUsageRows.value.filter(row => row.expiry_state === 'soon').length, color: 'orange' },
@@ -3985,7 +3872,7 @@ const supportPortfolioRows = computed(() => {
 const supportPortfolioChartMax = computed(() => Math.max(1, ...supportPortfolioRows.value.map(row => Number(row.count || 0))));
 const topSupportCards = computed(() => supportPerformanceRows.value.map((row, index) => {
   const employee = resolveEmployeeForCompany(row);
-  const companies = visibleCompanyInfoRows.value.filter(company => companyMatchesEmployee(company, employee)).map(enrichCompanyUsage);
+  const companies = visibleCompanyInfoRows.value.filter(company => companyMatchesEmployee(company, employee));
   const companySummary = companyPortfolioSummary(companies);
   return {
     ...employee,
@@ -4444,8 +4331,6 @@ const companyActivityColumns = [
 const productUsageColumns = [
   { key: 'name', label: 'Kompaniya' },
   { key: 'brand', label: 'Brend', format: v => v || '—' },
-  { key: 'usage_score', label: 'Foydalanish', slot: 'usageScore' },
-  { key: 'usage_level', label: 'Daraja' },
   { key: 'business_status', label: 'Biznes holati', slot: 'businessStatus' },
   { key: 'uyqur_support_username', label: 'Mas’ul', format: (_, row) => companySupportLabel(row) },
   { key: 'expired', label: 'Obuna', format: (_, row) => expiryStatusLabel(row) }
@@ -4467,7 +4352,6 @@ const productMetricColumns = [
   { key: 'brand', label: 'Brend', format: v => v || '—' },
   { key: 'uyqur_support_username', label: 'Mas’ul', format: (_, row) => companySupportLabel(row) },
   { key: 'business_status', label: 'Biznes holati', format: businessStatusLabel },
-  { key: 'usage_score', label: 'Foydalanish', format: v => fmtPercent(v) },
   { key: 'start_label', label: 'Boshlanish' },
   { key: 'subscription_label', label: 'Obuna muddati' },
   { key: 'usage_duration_label', label: 'Ishlatmoqda' },
@@ -4489,7 +4373,6 @@ const employeeCompanyColumns = [
   { key: 'name', label: 'Kompaniya' },
   { key: 'brand', label: 'Brend', format: v => v || '—' },
   { key: 'business_status', label: 'Biznes holati', slot: 'businessStatus' },
-  { key: 'usage_score', label: 'Foydalanish', slot: 'usageScore' },
   { key: 'expired', label: 'Obuna', format: (_, row) => expiryStatusLabel(row) },
   { key: 'phone', label: 'Telefon', format: v => v || '—' }
 ];
@@ -5399,8 +5282,7 @@ async function selectEmployeeProfileChat(row = {}) {
 async function openEmployeeCompanies(row = {}) {
   const employee = resolveEmployeeForCompany(row);
   const companies = (row.assigned_companies || visibleCompanyInfoRows.value
-    .filter(company => companyMatchesEmployee(company, employee))
-    .map(enrichCompanyUsage));
+    .filter(company => companyMatchesEmployee(company, employee)));
   employeeCompanyDetail.value = {
     employee,
     companies,
@@ -5827,7 +5709,6 @@ function openSupportEmployeeSummary(kind = 'requests') {
 function productMetricRows(kind = 'total') {
   const rows = productUsageRows.value.map(enrichCompanyTimeline);
   if (kind === 'active') return rows.filter(row => row.business_status === 'ACTIVE');
-  if (kind === 'highUsage') return rows.filter(row => Number(row.usage_score || 0) >= 75);
   if (kind === 'risk') return rows.filter(row => isCompanyChurn(row) || ['expired', 'soon'].includes(row.expiry_state));
   return rows;
 }
@@ -5835,8 +5716,7 @@ function productMetricRows(kind = 'total') {
 function openProductMetricDetail(kind = 'total') {
   const titleMap = {
     total: 'Kuzatuvdagi kompaniyalar',
-    active: 'Aktiv foydalanayotgan kompaniyalar',
-    highUsage: 'Yuqori foydalanishdagi kompaniyalar',
+    active: 'Biznes aktiv kompaniyalar',
     risk: 'Risk va churn kompaniyalari'
   };
   const rows = productMetricRows(kind);
@@ -5849,8 +5729,7 @@ function openProductMetricDetail(kind = 'total') {
     summary: [
       { label: 'Kompaniya', value: fmtNumber(rows.length) },
       { label: 'Aktiv', value: fmtNumber(rows.filter(row => row.business_status === 'ACTIVE').length) },
-      { label: 'Risk', value: fmtNumber(rows.filter(row => isCompanyChurn(row) || ['expired', 'soon'].includes(row.expiry_state)).length) },
-      { label: 'O‘rtacha foydalanish', value: fmtPercent(rows.reduce((sum, row) => sum + Number(row.usage_score || 0), 0) / rows.length) }
+      { label: 'Risk', value: fmtNumber(rows.filter(row => isCompanyChurn(row) || ['expired', 'soon'].includes(row.expiry_state)).length) }
     ]
   });
 }
@@ -6022,8 +5901,7 @@ function openCompanyTimelineDetail(row = {}) {
     summary: [
       { label: 'Boshlanish', value: row.start_label || '—' },
       { label: 'Obuna muddati', value: row.subscription_label || '—' },
-      { label: 'Ishlatmoqda', value: row.usage_duration_label || '—' },
-      { label: 'Foydalanish', value: fmtPercent(row.usage_score || 0) }
+      { label: 'Ishlatmoqda', value: row.usage_duration_label || '—' }
     ]
   });
 }
