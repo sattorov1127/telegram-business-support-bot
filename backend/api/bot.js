@@ -1762,7 +1762,7 @@ async function handleMessageReaction(reactionUpdate) {
 
   // 2. Qaysi emoji qo'yilganini aniqlaymiz
   const emojis = new_reaction.filter(r => r.type === 'emoji').map(r => r.emoji);
-  const isEye = emojis.includes('👁️');
+  const isEye = emojis.includes('👁️') || emojis.includes('👀');
   const isHundred = emojis.includes('💯');
 
   console.info(`[bot:reaction] Emojis: ${emojis.join(', ')} (isEye: ${isEye}, isHundred: ${isHundred})`);
