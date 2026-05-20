@@ -3316,7 +3316,7 @@ async function sendTelegramFile(query, res) {
   const pathType = contentTypeFromPath(query.file_name || file.file_path);
   const upstreamType = safeMimeType(response.headers.get('content-type'));
   const contentType = isGenericContentType(upstreamType) ? (requestedType || pathType || upstreamType) : upstreamType;
-  const fileName = query.file_name || fileNameFromPath(file.file_path);
+  const fileName = query.file_name || safeHeaderFileName(file.file_path);
   res.statusCode = 200;
   res.setHeader('Content-Type', contentType);
   res.setHeader('Content-Disposition', contentDispositionFor(contentType, fileName));

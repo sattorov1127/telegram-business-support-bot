@@ -1452,8 +1452,8 @@
                               class="chat-media-image" :src="mediaUrl(message.media)" alt="" />
                             <video v-else-if="isVideoMedia(message.media) && mediaUrl(message.media)"
                               class="chat-media-video" :src="mediaUrl(message.media)" controls playsinline></video>
-                            <audio v-else-if="isAudioMedia(message.media) && mediaUrl(message.media)"
-                              class="chat-media-audio" :src="mediaUrl(message.media)" controls></audio>
+                            <audio v-else-if="isAudioMedia(message.media)"
+                              class="chat-media-audio" :src="mediaUrl(message.media) || undefined" controls></audio>
                             <a v-else-if="isDocumentMedia(message.media) && mediaUrl(message.media)"
                               class="chat-media-file" :href="mediaUrl(message.media)" target="_blank"
                               rel="noopener noreferrer">{{ mediaPlaceholder(message.media) }}</a>
@@ -1632,8 +1632,8 @@
                               class="chat-media-image" :src="mediaUrl(message.media)" alt="" />
                             <video v-else-if="isVideoMedia(message.media) && mediaUrl(message.media)"
                               class="chat-media-video" :src="mediaUrl(message.media)" controls playsinline></video>
-                            <audio v-else-if="isAudioMedia(message.media) && mediaUrl(message.media)"
-                              class="chat-media-audio" :src="mediaUrl(message.media)" controls></audio>
+                            <audio v-else-if="isAudioMedia(message.media)"
+                              class="chat-media-audio" :src="mediaUrl(message.media) || undefined" controls></audio>
                             <a v-else-if="isDocumentMedia(message.media) && mediaUrl(message.media)"
                               class="chat-media-file" :href="mediaUrl(message.media)" target="_blank"
                               rel="noopener noreferrer">{{ mediaPlaceholder(message.media) }}</a>
@@ -1873,8 +1873,8 @@
                               class="chat-media-image" :src="mediaUrl(message.media)" alt="" />
                             <video v-else-if="isVideoMedia(message.media) && mediaUrl(message.media)"
                               class="chat-media-video" :src="mediaUrl(message.media)" controls playsinline></video>
-                            <audio v-else-if="isAudioMedia(message.media) && mediaUrl(message.media)"
-                              class="chat-media-audio" :src="mediaUrl(message.media)" controls></audio>
+                            <audio v-else-if="isAudioMedia(message.media)"
+                              class="chat-media-audio" :src="mediaUrl(message.media) || undefined" controls></audio>
                             <a v-else-if="isDocumentMedia(message.media) && mediaUrl(message.media)"
                               class="chat-media-file" :href="mediaUrl(message.media)" target="_blank"
                               rel="noopener noreferrer">{{ mediaPlaceholder(message.media) }}</a>
@@ -2085,8 +2085,8 @@
                         :src="mediaUrl(message.media)" alt="" />
                       <video v-else-if="isVideoMedia(message.media) && mediaUrl(message.media)" class="chat-media-video"
                         :src="mediaUrl(message.media)" controls playsinline></video>
-                      <audio v-else-if="isAudioMedia(message.media) && mediaUrl(message.media)" class="chat-media-audio"
-                        :src="mediaUrl(message.media)" controls></audio>
+                      <audio v-else-if="isAudioMedia(message.media)" class="chat-media-audio"
+                        :src="mediaUrl(message.media) || undefined" controls></audio>
                       <a v-else-if="isDocumentMedia(message.media) && mediaUrl(message.media)" class="chat-media-file"
                         :href="mediaUrl(message.media)" target="_blank" rel="noopener noreferrer">{{
                           mediaPlaceholder(message.media) }}</a>
@@ -2827,6 +2827,7 @@ const supportPerformanceRows = computed(() => {
       ),
       closed_requests: closed,
       open_requests: open,
+      total_requests: total,
       assigned_company_count: assignedCompanyCount,
       avg_close_minutes: avg,
       close_rate: sla,
@@ -2883,8 +2884,45 @@ const unansweredAlerts = computed(() => {
     .slice(0, 5);
 });
 const unansweredAlertTotal = computed(() => unansweredAlerts.value.reduce((sum, row) => sum + Number(row.open_requests || 0), 0));
-const overdueOpenRequestsTotal = computed(() => (dashboard.openRequests || [])
-  .filter(request => openMinutes(request.created_at) > 30).length);
+const overdueOpenRequestsTotal = computed(() => {
+  const period = selectedStatsPeriod.value;
+  const now = new Date();
+  
+  return (dashboard.openRequests || []).filter(request => {
+    if (openMinutes(request.created_at) <= 30) return false;
+    if (!request.created_at || period === 'all') return true;
+
+    const reqDate = new Date(request.created_at);
+    
+    if (period === 'today') {
+      return reqDate.getDate() === now.getDate() && 
+             reqDate.getMonth() === now.getMonth() && 
+             reqDate.getFullYear() === now.getFullYear();
+    }
+    if (period === 'week') {
+      const diffTime = Math.abs(now - reqDate);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+      return diffDays <= 7;
+    }
+    if (period === 'month') {
+      const diffTime = Math.abs(now - reqDate);
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+      return diffDays <= 30;
+    }
+    if (period === 'custom') {
+      const start = customPeriodForm.appliedStart ? new Date(customPeriodForm.appliedStart) : null;
+      const end = customPeriodForm.appliedEnd ? new Date(customPeriodForm.appliedEnd) : null;
+      if (start && reqDate < start) return false;
+      if (end) {
+        const endDay = new Date(end);
+        endDay.setHours(23, 59, 59, 999);
+        if (reqDate > endDay) return false;
+      }
+    }
+    
+    return true;
+  }).length;
+});
 const loadingText = computed(() => ({
   login: 'Kirilmoqda...',
   refresh: 'Yangilanmoqda...',
@@ -4493,7 +4531,7 @@ function isDocumentMedia(media) {
 }
 
 function showMediaOpenLink(media) {
-  return !!mediaUrl(media) && ['voice', 'audio'].includes(media?.kind);
+  return ['voice', 'audio'].includes(media?.kind);
 }
 
 function mediaOpenLabel(media) {
