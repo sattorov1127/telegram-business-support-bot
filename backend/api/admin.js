@@ -495,9 +495,14 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
 
   open.forEach(request => {
     const responsible = resolveRequestResponsibleEmployee(request, messagesByConversation.get(conversationScopeKey(request)) || [], employeeMaps, chatToEmployeeId);
-    if (!responsible) return;
-    const employee = findEmployee(responsible.employee_id, responsible.tg_user_id, responsible.full_name);
-    const current = ensureEmployeeTotal({ employee, employeeId: responsible.employee_id, tgUserId: responsible.tg_user_id, name: responsible.full_name });
+    
+    let responsibleEmp = responsible;
+    if (!responsibleEmp) {
+      responsibleEmp = { employee_id: 'unassigned', tg_user_id: null, full_name: 'Biriktirilmagan (Umumiy)' };
+    }
+    
+    const employee = responsible ? findEmployee(responsible.employee_id, responsible.tg_user_id, responsible.full_name) : null;
+    const current = ensureEmployeeTotal({ employee, employeeId: responsibleEmp.employee_id, tgUserId: responsibleEmp.tg_user_id, name: responsibleEmp.full_name });
     current.open_requests += 1;
     if (request.chat_id) current.handled_chats.add(conversationScopeKey(request));
   });
@@ -516,9 +521,14 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
 
   prevOpen.forEach(request => {
     const responsible = resolveRequestResponsibleEmployee(request, messagesByConversation.get(conversationScopeKey(request)) || [], employeeMaps, chatToEmployeeId);
-    if (!responsible) return;
-    const employee = findEmployee(responsible.employee_id, responsible.tg_user_id, responsible.full_name);
-    const current = ensureEmployeeTotal({ employee, employeeId: responsible.employee_id, tgUserId: responsible.tg_user_id, name: responsible.full_name });
+    
+    let responsibleEmp = responsible;
+    if (!responsibleEmp) {
+      responsibleEmp = { employee_id: 'unassigned', tg_user_id: null, full_name: 'Biriktirilmagan (Umumiy)' };
+    }
+
+    const employee = responsible ? findEmployee(responsible.employee_id, responsible.tg_user_id, responsible.full_name) : null;
+    const current = ensureEmployeeTotal({ employee, employeeId: responsibleEmp.employee_id, tgUserId: responsibleEmp.tg_user_id, name: responsibleEmp.full_name });
     current.prev_open_requests += 1;
     if (request.chat_id) current.prev_handled_chats.add(conversationScopeKey(request));
   });

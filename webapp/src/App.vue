@@ -1322,7 +1322,7 @@
 
     <Transition name="modal-fade">
       <Modal v-if="modal === 'openRequests'" :title="openRequestsTitle" wide @close="closeModal">
-        <DataTable :columns="openRequestColumns" :rows="dashboard.openRequests || []" empty="Ochiq so‘rov qolmagan"
+        <DataTable :columns="openRequestColumns" :rows="filteredOpenRequests" empty="Ochiq so‘rov qolmagan"
           :on-cell-action="handleTableCellAction" :row-class="requestRowClass">
           <template #requestReply="{ row }">
             <button class="btn small" type="button" @click.stop="openRequestReply(row)">Javob</button>
@@ -2719,7 +2719,64 @@ const topEmployeeChartMax = computed(() => Math.max(1, ...topEmployeeChartRows.v
 const groupChartRows = computed(() => groupPerformanceRows.value.slice(0, 6));
 const groupChartMax = computed(() => Math.max(1, ...groupChartRows.value.map(row => Number(row.total_requests || 0))));
 const managerStats = computed(() => dashboard.manager || {});
-const managerOpenRequests = computed(() => (dashboard.openRequests || [])
+function isInSelectedPeriodDate(dateString) {
+  if (!dateString) return false;
+  const dateKey = tashkentDateKey(dateString);
+  const period = selectedStatsPeriod.value;
+
+  if (period === 'all') return true;
+  if (period === 'today') {
+    return dateKey === tashkentDateKey(new Date());
+  }
+  if (period === 'week') {
+    const todayKey = tashkentDateKey(new Date());
+    const weekStart = addDaysToDateKey(todayKey, -6);
+    return dateKey >= weekStart && dateKey <= todayKey;
+  }
+  if (period === 'month') {
+    const { year, month } = tashkentDateParts(new Date());
+    return dateKey.startsWith(`${year}-${month}`);
+  }
+  if (period === 'custom') {
+    const startKey = normalizeDateKey(customPeriodForm.appliedStart);
+    const endKey = normalizeDateKey(customPeriodForm.appliedEnd);
+    if (!startKey || !endKey) return false;
+    return dateKey >= startKey && dateKey <= endKey;
+  }
+  return true;
+}
+
+function tashkentDateParts(value = new Date()) {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tashkent',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  }).formatToParts(new Date(value));
+  return Object.fromEntries(parts.filter(part => part.type !== 'literal').map(part => [part.type, part.value]));
+}
+
+function tashkentDateKey(value = new Date()) {
+  const parts = tashkentDateParts(value);
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function addDaysToDateKey(dateKey, days) {
+  const [year, month, day] = String(dateKey || '').split('-').map(Number);
+  if (!year || !month || !day) return dateKey;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  date.setUTCDate(date.getUTCDate() + Number(days));
+  return tashkentDateKey(date);
+}
+
+function normalizeDateKey(value = '') {
+  const text = String(value || '').trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+}
+
+const filteredOpenRequests = computed(() => (dashboard.openRequests || []).filter(request => isInSelectedPeriodDate(request.created_at)));
+
+const managerOpenRequests = computed(() => (filteredOpenRequests.value || [])
   .slice()
   .sort((a, b) => openMinutes(b.created_at) - openMinutes(a.created_at)));
 const employeeStatsMap = computed(() => new Map((dashboard.employeeStats || []).map(row => [String(row.id || row.employee_id || row.tg_user_id || row.full_name || ''), row])));
@@ -2849,6 +2906,8 @@ const supportPerformanceRows = computed(() => {
     }, 'company');
   });
 
+  const openMap = employeeOpenRequestSummaryMap();
+
   return [...merged.values()].filter(row => !isAdminLikeEmployee(row)).map((row, index) => {
     const stat = employeeStatsMap.value.get(employeeLookupKey(row)) || row;
     const candidate = { ...row, ...stat };
@@ -2857,9 +2916,10 @@ const supportPerformanceRows = computed(() => {
     const assignedCompanyCount = visibleCompanyInfoRows.value.filter(company => companyMatchesEmployee(company, candidate)).length;
 
     const closed = periodRow ? Number(periodRow.closed_requests || 0) : 0;
-    const open = periodRow ? Number(periodRow.open_requests || 0) : 0;
+    const openSummary = key ? openMap.get(key) : null;
+    const open = openSummary ? Number(openSummary.open_requests || 0) : 0;
     const total = closed + open;
-    const sla = periodRow ? Number(periodRow.sla || periodRow.close_rate || 0) : 0;
+    const sla = total > 0 ? (closed / total) * 100 : 100;
     const avg = periodRow ? Number(periodRow.avg_close_minutes || 0) : 0;
     const handledChats = periodRow ? Number(periodRow.handled_chats || 0) : 0;
 
@@ -2903,10 +2963,10 @@ const filteredMetricDetailRows = computed(() => {
 const topPerformer = computed(() => supportPerformanceRows.value[0] || null);
 const topPerformerName = computed(() => topPerformer.value?.full_name || '');
 const currentPeriodDates = computed(() => analytics.value.periodDates?.[selectedStatsPeriod.value] || { current: '', prev: '' });
-const openRequestsTitle = computed(() => `Ochiq so‘rovlar (${fmtNumber((dashboard.openRequests || []).length)})`);
+const openRequestsTitle = computed(() => `Ochiq so‘rovlar (${fmtNumber((filteredOpenRequests.value || []).length)})`);
 const unansweredAlerts = computed(() => {
   const grouped = new Map();
-  (dashboard.openRequests || []).forEach((request, index) => {
+  (filteredOpenRequests.value || []).forEach((request, index) => {
     const key = String(request.chat_id || request.id || index);
     const current = grouped.get(key) || {
       key,
@@ -2934,45 +2994,8 @@ const unansweredAlerts = computed(() => {
     .slice(0, 5);
 });
 const unansweredAlertTotal = computed(() => unansweredAlerts.value.reduce((sum, row) => sum + Number(row.open_requests || 0), 0));
-const overdueOpenRequestsTotal = computed(() => {
-  const period = selectedStatsPeriod.value;
-  const now = new Date();
-  
-  return (dashboard.openRequests || []).filter(request => {
-    if (openMinutes(request.created_at) <= 30) return false;
-    if (!request.created_at || period === 'all') return true;
-
-    const reqDate = new Date(request.created_at);
-    
-    if (period === 'today') {
-      return reqDate.getDate() === now.getDate() && 
-             reqDate.getMonth() === now.getMonth() && 
-             reqDate.getFullYear() === now.getFullYear();
-    }
-    if (period === 'week') {
-      const diffTime = Math.abs(now - reqDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-      return diffDays <= 7;
-    }
-    if (period === 'month') {
-      const diffTime = Math.abs(now - reqDate);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
-      return diffDays <= 30;
-    }
-    if (period === 'custom') {
-      const start = customPeriodForm.appliedStart ? new Date(customPeriodForm.appliedStart) : null;
-      const end = customPeriodForm.appliedEnd ? new Date(customPeriodForm.appliedEnd) : null;
-      if (start && reqDate < start) return false;
-      if (end) {
-        const endDay = new Date(end);
-        endDay.setHours(23, 59, 59, 999);
-        if (reqDate > endDay) return false;
-      }
-    }
-    
-    return true;
-  }).length;
-});
+const overdueOpenRequestsTotal = computed(() => filteredOpenRequests.value
+  .filter(request => openMinutes(request.created_at) > 30).length);
 const loadingText = computed(() => ({
   login: 'Kirilmoqda...',
   refresh: 'Yangilanmoqda...',
@@ -5544,7 +5567,7 @@ function openEmployeeOpenRequests(row = {}) {
 }
 
 function openRemainingRequests() {
-  if (!(dashboard.openRequests || []).length) return showToast('Ochiq so‘rov qolmagan');
+  if (!(filteredOpenRequests.value || []).length) return showToast('Ochiq so‘rov qolmagan');
   selectedTarget.value = null;
   modal.value = 'openRequests';
 }
@@ -5719,14 +5742,66 @@ function employeeSummaryKey(row = {}) {
 
 function employeeOpenRequestSummaryMap() {
   const map = new Map();
-  (dashboard.openRequests || []).forEach(request => {
-    const key = employeeSummaryKey(request);
+  
+  const employeeMappings = (employees.value || []).filter(emp => !isAdminLikeEmployee(emp)).map(emp => {
+    const companies = (visibleCompanyInfoRows.value || []).filter(c => companyMatchesEmployee(c, emp));
+    const companyIds = new Set(companies.map(c => String(c.id || c.company_id || '').trim()).filter(Boolean));
+    const companyNames = new Set(companies.map(c => normalizedCompanyName(c.name)).filter(Boolean));
+    
+    const chatIds = new Set();
+    companies.forEach(company => {
+      if (company.chat_id) chatIds.add(String(company.chat_id));
+      relatedCompanyChatStats(company).forEach(chat => {
+        if (chat.chat_id) chatIds.add(String(chat.chat_id));
+      });
+    });
+    
+    return {
+      employee: emp,
+      key: employeeSummaryKey(emp),
+      username: normalizeSupportUsername(emp.username),
+      id: String(emp.id || emp.employee_id || '').trim(),
+      tg_user_id: String(emp.tg_user_id || '').trim(),
+      full_name: String(emp.full_name || '').trim().toLowerCase(),
+      companyIds,
+      companyNames,
+      chatIds
+    };
+  });
+
+  (filteredOpenRequests.value || []).forEach(request => {
+    let matchedEmp = null;
+    
+    const reqUsername = normalizeSupportUsername(request.responsible_employee_username || request.username);
+    const reqEmpId = String(request.responsible_employee_id || request.employee_id || '').trim();
+    const reqTgId = String(request.tg_user_id || '').trim();
+    const reqEmpName = String(request.responsible_employee_name || '').trim().toLowerCase();
+    
+    matchedEmp = employeeMappings.find(m => {
+      if (reqUsername && m.username === reqUsername) return true;
+      if (reqEmpId && m.id === reqEmpId) return true;
+      if (reqTgId && m.tg_user_id === reqTgId) return true;
+      if (reqEmpName && m.full_name === reqEmpName) return true;
+      return false;
+    });
+    
+    if (!matchedEmp) {
+      matchedEmp = employeeMappings.find(m => {
+        if (request.company_id && m.companyIds.has(String(request.company_id).trim())) return true;
+        if (request.company_name && m.companyNames.has(normalizedCompanyName(request.company_name))) return true;
+        if (request.chat_id && m.chatIds.has(String(request.chat_id).trim())) return true;
+        return false;
+      });
+    }
+    
+    const key = matchedEmp ? matchedEmp.key : employeeSummaryKey(request);
     if (!key) return;
+    
     const current = map.get(key) || {
       key,
-      employee_id: request.responsible_employee_id || '',
-      username: request.responsible_employee_username || '',
-      full_name: request.responsible_employee_name || 'Xodim biriktirilmagan',
+      employee_id: matchedEmp ? (matchedEmp.employee.id || matchedEmp.employee.employee_id || '') : (request.responsible_employee_id || ''),
+      username: matchedEmp ? (matchedEmp.employee.username || '') : (request.responsible_employee_username || ''),
+      full_name: matchedEmp ? (matchedEmp.employee.full_name || 'Xodim') : (request.responsible_employee_name || 'Xodim biriktirilmagan'),
       open_requests: 0,
       chat_keys: new Set()
     };
@@ -5734,6 +5809,7 @@ function employeeOpenRequestSummaryMap() {
     if (request.chat_id) current.chat_keys.add(String(request.chat_id));
     map.set(key, current);
   });
+  
   return map;
 }
 
