@@ -425,13 +425,17 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
   const chatToEmployeeId = buildChatToEmployeeIdMap(chats, companyMembers);
 
   const closed = requests.filter(request => {
-    if (request.status !== 'closed' || !inCurrentPeriod(request.created_at, periodKey, keys)) return false;
+    if (request.status !== 'closed') return false;
+    const closePeriodKey = request.closed_at || request.created_at;
+    if (!inCurrentPeriod(closePeriodKey, periodKey, keys)) return false;
     return Boolean(request.closed_by_employee_id || request.closed_by_tg_id || request.closed_by_name);
   });
   const open = requests.filter(request => request.status === 'open' && inCurrentPeriod(request.created_at, periodKey, keys));
 
   const prevClosed = requests.filter(request => {
-    if (request.status !== 'closed' || !inPreviousPeriod(request.created_at, periodKey, keys)) return false;
+    if (request.status !== 'closed') return false;
+    const closePeriodKey = request.closed_at || request.created_at;
+    if (!inPreviousPeriod(closePeriodKey, periodKey, keys)) return false;
     return Boolean(request.closed_by_employee_id || request.closed_by_tg_id || request.closed_by_name);
   });
   const prevOpen = requests.filter(request => request.status === 'open' && inPreviousPeriod(request.created_at, periodKey, keys));
@@ -485,9 +489,9 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
     const current = ensureEmployeeTotal({ employee, employeeId: request.closed_by_employee_id, tgUserId: request.closed_by_tg_id, name: request.closed_by_name });
     current.closed_requests += 1;
     if (request.chat_id) current.handled_chats.add(conversationScopeKey(request));
-    if (inCurrentPeriod(request.created_at, periodKey, keys)) {
-      const replyMin = calculateFirstResponseMinutes(request, messages, employeeMaps);
-      const closeMinute = replyMin !== null ? replyMin : minutesBetween(request.created_at, request.closed_at);
+    const closePeriodKey = request.closed_at || request.created_at;
+    if (inCurrentPeriod(closePeriodKey, periodKey, keys)) {
+      const closeMinute = minutesBetween(request.created_at, request.closed_at);
       if (closeMinute !== null) current.close_minutes.push(closeMinute);
     }
     if (!current.last_closed_at || String(request.closed_at || '') > String(current.last_closed_at || '')) current.last_closed_at = request.closed_at || null;
@@ -512,9 +516,9 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
     const current = ensureEmployeeTotal({ employee, employeeId: request.closed_by_employee_id, tgUserId: request.closed_by_tg_id, name: request.closed_by_name });
     current.prev_closed_requests += 1;
     if (request.chat_id) current.prev_handled_chats.add(conversationScopeKey(request));
-    if (inPreviousPeriod(request.created_at, periodKey, keys)) {
-      const replyMin = calculateFirstResponseMinutes(request, messages, employeeMaps);
-      const closeMinute = replyMin !== null ? replyMin : minutesBetween(request.created_at, request.closed_at);
+    const closePeriodKey = request.closed_at || request.created_at;
+    if (inPreviousPeriod(closePeriodKey, periodKey, keys)) {
+      const closeMinute = minutesBetween(request.created_at, request.closed_at);
       if (closeMinute !== null) current.prev_close_minutes.push(closeMinute);
     }
   });

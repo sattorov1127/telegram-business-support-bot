@@ -1660,6 +1660,61 @@ async function testDashboardEmployeePerformanceCountsOpenAndSlaPerEmployee() {
   }
 }
 
+async function testDashboardEmployeePerformanceCountsClosedByCloseDate() {
+  const originalSelect = supabase.select;
+  const originalEmployeeStats = stats.selectEmployeeStatistics;
+  const originalChatStats = stats.selectChatStatistics;
+  const originalTodaySummary = stats.selectTodaySummary;
+  const chatId = -100902;
+  const createdAt = '2026-04-29T23:50:00.000Z';
+  const closedAt = '2026-04-30T00:05:00.000Z';
+  const employees = [{ id: 'emp-1', tg_user_id: 777, full_name: 'Ali Support', username: 'ali', role: 'support', is_active: true }];
+  const requests = [
+    {
+      id: 'request-closed-prev-day',
+      source_type: 'group',
+      chat_id: chatId,
+      customer_tg_id: 501,
+      customer_name: 'Mijoz A',
+      status: 'closed',
+      closed_by_employee_id: 'emp-1',
+      closed_by_tg_id: 777,
+      closed_by_name: 'Ali Support',
+      created_at: createdAt,
+      closed_at: closedAt
+    }
+  ];
+
+  supabase.select = async (table, query = {}) => {
+    if (table === 'support_requests') return requests;
+    if (table === 'tg_chats') return [{ chat_id: chatId, title: 'Support guruhi', source_type: 'group', is_active: true }];
+    if (table === 'employees') return employees;
+    if (table === 'messages') return [];
+    if (table === 'companies') return [];
+    if (table === 'request_events') return [];
+    return [];
+  };
+  stats.selectEmployeeStatistics = async () => [];
+  stats.selectChatStatistics = async () => [{ chat_id: chatId, title: 'Support guruhi', source_type: 'group', is_active: true }];
+  stats.selectTodaySummary = async () => [{ total_requests: 1, open_requests: 0, closed_requests: 1 }];
+
+  try {
+    const result = await callAdmin('dashboard', { query: { period: 'custom', start_date: '2026-04-30', end_date: '2026-04-30' } });
+    assert.strictEqual(result.status, 200);
+    const row = result.payload.data.analytics.employeePerformance.custom.find(item => item.employee_id === 'emp-1');
+    assert.ok(row);
+    assert.strictEqual(row.closed_requests, 1);
+    assert.strictEqual(row.open_requests, 0);
+    assert.strictEqual(row.total_requests, 1);
+    assert.strictEqual(row.avg_close_minutes, 15);
+  } finally {
+    supabase.select = originalSelect;
+    stats.selectEmployeeStatistics = originalEmployeeStats;
+    stats.selectChatStatistics = originalChatStats;
+    stats.selectTodaySummary = originalTodaySummary;
+  }
+}
+
 async function testRequestsListEnrichesCompanyFromRegisteredGroup() {
   const originalSelect = supabase.select;
   const chatId = -100801;
@@ -3246,6 +3301,7 @@ async function run() {
   await testDashboardCompanyTicketsIncludeLinkedGroupMessagesWithoutRequests();
   await testDashboardCompanyTicketsUseLinkedGroupOrdinaryMessages();
   await testDashboardEmployeePerformanceCountsOpenAndSlaPerEmployee();
+  await testDashboardEmployeePerformanceCountsClosedByCloseDate();
   await testRequestsListEnrichesCompanyFromRegisteredGroup();
   await testRequestsListShowsResponsibleEmployeeFromTicketMessages();
   await testWebhookInfoWarnsWhenMessageUpdatesMissing();

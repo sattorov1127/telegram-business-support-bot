@@ -2572,69 +2572,6 @@ async function processMessage(updateKind, message) {
   if (await maybeReplyPrivateFallback(updateKind, message, classification)) return;
 }
 
-async function handleMessageReaction(reactionUpdate) {
-  const { chat, message_id, user, new_reaction } = reactionUpdate;
-  if (!chat || !message_id || !user || !new_reaction) return;
-
-  const chatId = String(chat.id);
-  const msgId = String(message_id);
-  const userId = String(user.id);
-
-  console.info(`[bot:reaction] Incoming reaction from ${userId} in chat ${chatId} for msg ${msgId}`);
-
-  // 1. Faqat xodimlardan kelgan reaksiyalarni qabul qilamiz
-  const employee = await metrics.getKnownEmployeeByTelegramId(userId);
-  if (!employee) {
-    console.warn(`[bot:reaction] User ${userId} is not a known active employee, ignoring`);
-    return;
-  }
-
-  // 2. Qaysi emoji qo'yilganini aniqlaymiz
-  const emojis = new_reaction.filter(r => r.type === 'emoji').map(r => r.emoji);
-  const isEye = emojis.includes('👁️') || emojis.includes('👀');
-  const isHundred = emojis.includes('💯');
-
-  console.info(`[bot:reaction] Emojis: ${emojis.join(', ')} (isEye: ${isEye}, isHundred: ${isHundred})`);
-
-  if (!isEye && !isHundred) return;
-
-  // 3. Bazadan ushbu xabarni topamiz
-  const rows = await supabase.select('messages', {
-    select: 'id,chat_id,tg_message_id,from_tg_user_id,from_name,from_username,text,source_type,created_at',
-    chat_id: supabase.eq(chatId),
-    tg_message_id: supabase.eq(msgId),
-    limit: '1'
-  });
-  
-  const dbMessage = rows && rows[0];
-  if (!dbMessage) {
-    console.warn(`[bot:reaction] Message ${msgId} in chat ${chatId} not found in DB`);
-    return;
-  }
-
-  const fakeMessage = {
-    message_id: Number(msgId),
-    chat: { id: Number(chatId), type: chat.type, title: chat.title },
-    from: { 
-      id: Number(dbMessage.from_tg_user_id), 
-      first_name: dbMessage.from_name || 'Customer', 
-      username: dbMessage.from_username || null 
-    },
-    text: dbMessage.text || '',
-    date: Math.floor(new Date(dbMessage.created_at).getTime() / 1000)
-  };
-
-  if (isEye) {
-    await metrics.createSupportRequest({ message: fakeMessage, sourceType: dbMessage.source_type });
-    await supabase.patch('messages', { id: supabase.eq(dbMessage.id) }, { classification: 'ticket' });
-    console.info(`[bot:reaction] SUCCESS: Eye reaction -> Ticket opened for msg ${msgId}`);
-  } else if (isHundred) {
-    await metrics.closeLatestRequest({ message: fakeMessage, employee });
-    await supabase.patch('messages', { id: supabase.eq(dbMessage.id) }, { classification: 'done' });
-    console.info(`[bot:reaction] SUCCESS: 100 reaction -> Ticket closed for msg ${msgId}`);
-  }
-}
-
 async function handleTelegramUpdate(update = {}) {
   console.info('[bot:update]', summarizeUpdate(update));
 
@@ -2648,10 +2585,6 @@ async function handleTelegramUpdate(update = {}) {
     return { ok: true, handled: 'chat_member' };
   }
 
-  if (update.message_reaction) {
-    return handleMessageReaction(update.message_reaction);
-  }
-
   if (update.message_reaction_count) {
     return { ok: true, handled: 'message_reaction_count' };
   }
@@ -2661,15 +2594,15 @@ async function handleTelegramUpdate(update = {}) {
     return { ok: true, handled: 'callback_query' };
   }
 
+  if (update.message_reaction) {
+    await handleMessageReaction(update.message_reaction);
+    return { ok: true, handled: 'message_reaction' };
+  }
+
   const picked = pickMessage(update);
   if (picked && picked.message) {
     await processMessage(picked.kind, picked.message);
     return { ok: true, handled: picked.kind };
-  }
-
-  if (update.message_reaction) {
-    await handleMessageReaction(update.message_reaction);
-    return { ok: true, handled: 'message_reaction' };
   }
 
   return { ok: true, handled: 'ignored' };
