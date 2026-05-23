@@ -786,18 +786,14 @@ function buildCompanyTicketPerformance({ requests, chats = [], companies, messag
 
   return [...totals.values()]
     .map(row => {
-      const hasActualRequests = companyIdsWithActualRequests.has(String(row.company_id));
-      const fallbackTotal = hasActualRequests ? 0 : (row.ticket_like_messages || row.message_count);
-      const totalRequests = row.total_requests || fallbackTotal;
-      const openRequests = row.total_requests ? row.open_requests : fallbackTotal;
       return {
         ...row,
-        total_requests: totalRequests,
-        open_requests: openRequests,
-        close_rate: percent(row.closed_requests, totalRequests)
+        total_requests: row.total_requests || 0,
+        open_requests: row.open_requests || 0,
+        close_rate: percent(row.closed_requests, row.total_requests || 0)
       };
     })
-    .filter(row => Number(row.total_requests || 0) > 0)
+    .filter(row => Number(row.total_requests || 0) > 0 || Number(row.message_count || 0) > 0)
     .sort((a, b) => b.total_requests - a.total_requests || b.closed_requests - a.closed_requests || b.message_count - a.message_count || a.name.localeCompare(b.name))
     .slice(0, 30);
 }

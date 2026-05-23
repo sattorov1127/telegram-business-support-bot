@@ -365,10 +365,10 @@
                       <span class="company-ticket-fill open"
                         :style="{ left: (row.total_requests > 0 ? (row.closed_requests / row.total_requests * 100) : 0) + '%', width: (row.total_requests > 0 ? (row.open_requests / row.total_requests * 100) : 0) + '%' }"></span>
                     </div>
-                    <strong>
-                      <span class="total-text">Jami: {{ fmtNumber(row.total_requests) }}</span>
-                      <span class="closed-text">Javob berilgan: {{ fmtNumber(row.closed_requests) }}</span>
-                      <span class="open-text">Ochiq: {{ fmtNumber(row.open_requests) }}</span>
+                    <strong style="display: flex; gap: 10px; font-size: 14px;">
+                      <span class="total-text" style="color: var(--text);" title="Jami ticketlar">{{ fmtNumber(row.total_requests) }}</span>
+                      <span class="closed-text" style="color: #00d26a;" title="Javob berilgan">{{ fmtNumber(row.closed_requests) }}</span>
+                      <span class="open-text" style="color: #f73164;" title="Ochiq">{{ fmtNumber(row.open_requests) }}</span>
                     </strong>
                   </article>
                 </div>
@@ -1560,8 +1560,7 @@
                     <b>{{ group.title || group.chat_id }}</b>
                     <small>{{ chatMessageText(group.conversation?.[0]) || group.requests?.[0]?.initial_text ||
                       'Yozishma tarixi' }}</small>
-                    <em>{{ fmtNumber(group.total_messages) }} xabar · {{ fmtNumber(group.total_requests) }} ticket · {{
-                      fmtNumber(group.open_requests) }} ochiq</em>
+                    <em>{{ fmtNumber(group.total_messages) }} xabar · Jami ticket: {{ fmtNumber(group.total_requests) }} · Javob berilgan: {{ fmtNumber(group.closed_requests) }} · Ochiq: {{ fmtNumber(group.open_requests) }}</em>
                   </span>
                   <strong v-if="group.open_requests">{{ fmtNumber(group.open_requests) }}</strong>
                 </button>
@@ -1575,9 +1574,7 @@
                   <div class="employee-chat-pane-head">
                     <div>
                       <b>{{ selectedCompanyGroup.title || selectedCompanyGroup.chat_id }}</b>
-                      <span>{{ fmtNumber(selectedCompanyGroup.total_messages) }} xabar · {{
-                        fmtNumber(selectedCompanyGroup.total_requests) }} ticket · {{
-                          fmtNumber(selectedCompanyGroup.closed_requests) }} yopilgan</span>
+                      <span>{{ fmtNumber(selectedCompanyGroup.total_messages) }} xabar · Jami ticket: {{ fmtNumber(selectedCompanyGroup.total_requests) }} · Javob berilgan: {{ fmtNumber(selectedCompanyGroup.closed_requests) }} · Ochiq: {{ fmtNumber(selectedCompanyGroup.open_requests) }}</span>
                     </div>
                     <button class="btn small" type="button" @click="loadChatDetail(selectedCompanyGroup)">
                       Chat tafsiloti
@@ -2849,6 +2846,13 @@ function isAdminLikeEmployee(row = {}) {
   return ['admin', 'system admin', 'tizim admini'].includes(name);
 }
 
+// Faqat "Uyqur" nomli/usernameli xodimlar haqiqiy natija ko'rsatadi
+function isUyqurEmployee(row = {}) {
+  const name = String(row.full_name || '').toLowerCase();
+  const username = String(row.username || '').toLowerCase();
+  return name.includes('uyqur') || username.includes('uyqur');
+}
+
 function mergeSupportCandidate(map, row = {}, source = 'identity') {
   if (isAdminLikeEmployee(row)) return;
   const key = supportRowKey(row);
@@ -2930,13 +2934,23 @@ const supportPerformanceRows = computed(() => {
     const periodRow = key ? periodStatsMap.get(key) : null;
     const assignedCompanyCount = visibleCompanyInfoRows.value.filter(company => companyMatchesEmployee(company, candidate)).length;
 
-    const closed = periodRow ? Number(periodRow.closed_requests || 0) : 0;
+    // Faqat Uyqur xodimlariga haqiqiy natija ko'rsatiladi, qolganlar 0 turadi
+    const uyqur = isUyqurEmployee(row);
+    const closedRaw = periodRow ? Number(periodRow.closed_requests || 0) : 0;
     const openSummary = key ? openMap.get(key) : null;
-    const open = openSummary ? Number(openSummary.open_requests || 0) : 0;
-    const total = closed + open;
-    const sla = total > 0 ? (closed / total) * 100 : 100;
-    const avg = periodRow ? Number(periodRow.avg_close_minutes || 0) : 0;
-    const handledChats = periodRow ? Number(periodRow.handled_chats || 0) : 0;
+    const openRaw = openSummary ? Number(openSummary.open_requests || 0) : 0;
+    const totalRaw = closedRaw + openRaw;
+    const slaRaw = totalRaw > 0 ? (closedRaw / totalRaw) * 100 : 100;
+    const avgRaw = periodRow ? Number(periodRow.avg_close_minutes || 0) : 0;
+    const handledChatsRaw = periodRow ? Number(periodRow.handled_chats || 0) : 0;
+
+    // Uyqur bo'lmaganlar uchun barcha metrikalarni 0 ga o'tkazamiz
+    const closed = uyqur ? closedRaw : 0;
+    const open = uyqur ? openRaw : 0;
+    const total = uyqur ? totalRaw : 0;
+    const sla = uyqur ? slaRaw : 100;
+    const avg = uyqur ? avgRaw : 0;
+    const handledChats = uyqur ? handledChatsRaw : 0;
 
     const grade = performanceGrade(sla, avg);
     return {
@@ -2949,6 +2963,7 @@ const supportPerformanceRows = computed(() => {
       role: row.role || stat.role || '',
       full_name: row.full_name || stat.full_name || 'Xodim',
       telegram_is_premium: row.telegram_is_premium === true || stat.telegram_is_premium === true,
+      is_uyqur_employee: uyqur,
       handled_chats: handledChats,
       closed_requests: closed,
       open_requests: open,
@@ -2975,7 +2990,8 @@ const filteredMetricDetailRows = computed(() => {
   });
 });
 
-const topPerformer = computed(() => supportPerformanceRows.value[0] || null);
+// Top hodim faqat Uyqur xodimlaridan tanlanadi
+const topPerformer = computed(() => supportPerformanceRows.value.find(row => row.is_uyqur_employee) || null);
 const topPerformerName = computed(() => topPerformer.value?.full_name || '');
 const currentPeriodDates = computed(() => analytics.value.periodDates?.[selectedStatsPeriod.value] || { current: '', prev: '' });
 const openRequestsTitle = computed(() => `Ochiq so‘rovlar (${fmtNumber((filteredOpenRequests.value || []).length)})`);
