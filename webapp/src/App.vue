@@ -2925,8 +2925,8 @@ const supportPerformanceRows = computed(() => {
 
   return [...merged.values()]
     .filter(row => !isAdminLikeEmployee(row))
-    // Faqat bazada bor yoki Uyqur API'dan kelgan xodimlarni qoldiramiz (mijozlarni chiqarib tashlaymiz)
-    .filter(row => knownEmployeeKeys.has(supportRowKey(row)))
+    // Faqat bazada bor yoki Uyqur API'dan kelgan xodimlarni qoldiramiz (mijozlarni chiqarib tashlaymiz) va faqat Uyqur xodimlarini ko'rsatamiz
+    .filter(row => knownEmployeeKeys.has(supportRowKey(row)) && isUyqurEmployee(row))
     .map((row, index) => {
     const stat = employeeStatsMap.value.get(employeeLookupKey(row)) || row;
     const candidate = { ...row, ...stat };
