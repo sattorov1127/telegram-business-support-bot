@@ -2934,8 +2934,6 @@ const supportPerformanceRows = computed(() => {
     const periodRow = key ? periodStatsMap.get(key) : null;
     const assignedCompanyCount = visibleCompanyInfoRows.value.filter(company => companyMatchesEmployee(company, candidate)).length;
 
-    // Faqat Uyqur xodimlariga haqiqiy natija ko'rsatiladi, qolganlar 0 turadi
-    const uyqur = isUyqurEmployee(row);
     const closedRaw = periodRow ? Number(periodRow.closed_requests || 0) : 0;
     const openSummary = key ? openMap.get(key) : null;
     const openRaw = openSummary ? Number(openSummary.open_requests || 0) : 0;
@@ -2944,13 +2942,12 @@ const supportPerformanceRows = computed(() => {
     const avgRaw = periodRow ? Number(periodRow.avg_close_minutes || 0) : 0;
     const handledChatsRaw = periodRow ? Number(periodRow.handled_chats || 0) : 0;
 
-    // Uyqur bo'lmaganlar uchun barcha metrikalarni 0 ga o'tkazamiz
-    const closed = uyqur ? closedRaw : 0;
-    const open = uyqur ? openRaw : 0;
-    const total = uyqur ? totalRaw : 0;
-    const sla = uyqur ? slaRaw : 100;
-    const avg = uyqur ? avgRaw : 0;
-    const handledChats = uyqur ? handledChatsRaw : 0;
+    const closed = closedRaw;
+    const open = openRaw;
+    const total = totalRaw;
+    const sla = slaRaw;
+    const avg = avgRaw;
+    const handledChats = handledChatsRaw;
 
     const grade = performanceGrade(sla, avg);
     return {

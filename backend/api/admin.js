@@ -426,16 +426,14 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
 
   const closed = requests.filter(request => {
     if (request.status !== 'closed') return false;
-    const closePeriodKey = request.closed_at || request.created_at;
-    if (!inCurrentPeriod(closePeriodKey, periodKey, keys)) return false;
+    if (!inCurrentPeriod(request.created_at, periodKey, keys)) return false;
     return Boolean(request.closed_by_employee_id || request.closed_by_tg_id || request.closed_by_name);
   });
   const open = requests.filter(request => request.status === 'open' && inCurrentPeriod(request.created_at, periodKey, keys));
 
   const prevClosed = requests.filter(request => {
     if (request.status !== 'closed') return false;
-    const closePeriodKey = request.closed_at || request.created_at;
-    if (!inPreviousPeriod(closePeriodKey, periodKey, keys)) return false;
+    if (!inPreviousPeriod(request.created_at, periodKey, keys)) return false;
     return Boolean(request.closed_by_employee_id || request.closed_by_tg_id || request.closed_by_name);
   });
   const prevOpen = requests.filter(request => request.status === 'open' && inPreviousPeriod(request.created_at, periodKey, keys));
