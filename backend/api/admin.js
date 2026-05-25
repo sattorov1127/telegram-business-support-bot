@@ -427,6 +427,16 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
   });
   const chatToEmployeeId = buildChatToEmployeeIdMap(chats, companyMembers);
 
+  function companyScopeKey(request = {}) {
+    const directCompanyId = String(request.company_id || '').trim();
+    if (directCompanyId) return `id:${directCompanyId}`;
+    const chat = chatMap.get(telegramIdKey(request.chat_id));
+    const chatCompanyId = String(chat?.company_id || '').trim();
+    if (chatCompanyId) return `id:${chatCompanyId}`;
+    const companyName = String(request.company_name || chat?.company_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    return companyName ? `name:${companyName}` : '';
+  }
+
   const closed = requests.filter(request => {
     if (request.status !== 'closed') return false;
     if (!inCurrentPeriod(request.created_at, periodKey, keys)) return false;
@@ -460,6 +470,8 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
         prev_close_minutes: [],
         handled_chats: new Set(),
         prev_handled_chats: new Set(),
+        companies: new Set(),
+        prev_companies: new Set(),
         last_closed_at: null
       });
     }
@@ -491,6 +503,8 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
     const current = ensureEmployeeTotal({ employee, employeeId: request.closed_by_employee_id, tgUserId: request.closed_by_tg_id, name: request.closed_by_name });
     current.closed_requests += 1;
     if (request.chat_id) current.handled_chats.add(conversationScopeKey(request));
+    const companyKey = companyScopeKey(request);
+    if (companyKey) current.companies.add(companyKey);
     const closePeriodKey = request.closed_at || request.created_at;
     if (inCurrentPeriod(closePeriodKey, periodKey, keys)) {
       const closeMinute = minutesBetween(request.created_at, request.closed_at);
@@ -513,6 +527,8 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
     const current = ensureEmployeeTotal({ employee, employeeId: employee.id, tgUserId: employee.tg_user_id, name: employee.full_name });
     current.open_requests += 1;
     if (request.chat_id) current.handled_chats.add(conversationScopeKey(request));
+    const companyKey = companyScopeKey(request);
+    if (companyKey) current.companies.add(companyKey);
   });
 
   prevClosed.forEach(request => {
@@ -521,6 +537,8 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
     const current = ensureEmployeeTotal({ employee, employeeId: request.closed_by_employee_id, tgUserId: request.closed_by_tg_id, name: request.closed_by_name });
     current.prev_closed_requests += 1;
     if (request.chat_id) current.prev_handled_chats.add(conversationScopeKey(request));
+    const companyKey = companyScopeKey(request);
+    if (companyKey) current.prev_companies.add(companyKey);
     const closePeriodKey = request.closed_at || request.created_at;
     if (inPreviousPeriod(closePeriodKey, periodKey, keys)) {
       const closeMinute = minutesBetween(request.created_at, request.closed_at);
@@ -542,6 +560,8 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
     const current = ensureEmployeeTotal({ employee, employeeId: employee.id, tgUserId: employee.tg_user_id, name: employee.full_name });
     current.prev_open_requests += 1;
     if (request.chat_id) current.prev_handled_chats.add(conversationScopeKey(request));
+    const companyKey = companyScopeKey(request);
+    if (companyKey) current.prev_companies.add(companyKey);
   });
 
   return [...totals.values()]
@@ -559,12 +579,14 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
       close_rate: percent(row.closed_requests, row.closed_requests + row.open_requests),
       sla: percent(row.closed_requests, row.closed_requests + row.open_requests),
       avg_close_minutes: average(row.close_minutes),
+      company_total: row.companies.size,
       last_closed_at: row.last_closed_at,
       // Previous stats for comparison
       prev_closed_requests: row.prev_closed_requests,
       prev_open_requests: row.prev_open_requests,
       prev_total_requests: row.prev_closed_requests + row.prev_open_requests,
       prev_handled_chats: row.prev_handled_chats.size,
+      prev_company_total: row.prev_companies.size,
       prev_close_rate: percent(row.prev_closed_requests, row.prev_closed_requests + row.prev_open_requests),
       prev_avg_close_minutes: average(row.prev_close_minutes)
     }))
