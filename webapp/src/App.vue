@@ -2700,10 +2700,7 @@ const companyTicketRows = computed(() => {
     }))
   ]);
   return rows
-    .filter(row => Number(row.total_requests || 0) > 0
-      || Number(row.message_count || 0) > 0
-      || Number(row.ticket_like_messages || 0) > 0
-      || !!row.company_id)
+    .filter(row => Number(row.total_requests || 0) > 0 || !!row.company_id)
     .sort((a, b) => b.total_requests - a.total_requests || b.closed_requests - a.closed_requests || a.name.localeCompare(b.name))
     .slice(0, 30);
 });

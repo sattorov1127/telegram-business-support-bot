@@ -750,19 +750,6 @@ function buildCompanyTicketPerformance({ requests, chats = [], companies, messag
     .map(chat => [telegramIdKey(chat.chat_id), chat.company_id])
     .filter(([, companyId]) => companyId));
 
-  const companyIdsWithActualRequests = new Set();
-  chats.forEach(chat => {
-    if (chat.company_id && Number(chat.total_requests || 0) > 0) {
-      companyIdsWithActualRequests.add(String(chat.company_id));
-    }
-  });
-  requests.forEach(request => {
-    const companyId = request.company_id || chatCompanyMap.get(telegramIdKey(request.chat_id));
-    if (companyId) {
-      companyIdsWithActualRequests.add(String(companyId));
-    }
-  });
-
   const totals = new Map();
 
   function ensureCompanyTotal(companyId) {
@@ -812,13 +799,9 @@ function buildCompanyTicketPerformance({ requests, chats = [], companies, messag
 
   return [...totals.values()]
     .map(row => {
-      const messageCount = Number(row.message_count || 0);
-      const ticketLikeMessages = Number(row.ticket_like_messages || 0);
-      const hasTicketHistory = companyIdsWithActualRequests.has(String(row.company_id || ''));
-      const messageFallback = hasTicketHistory ? 0 : (ticketLikeMessages || messageCount);
-      const totalRequests = Number(row.total_requests || 0) || messageFallback;
+      const totalRequests = Number(row.total_requests || 0);
       const closedRequests = Number(row.closed_requests || 0);
-      const openRequests = Number(row.open_requests || 0) || (closedRequests ? 0 : messageFallback);
+      const openRequests = Number(row.open_requests || 0);
       return {
         ...row,
         total_requests: totalRequests,
@@ -826,8 +809,8 @@ function buildCompanyTicketPerformance({ requests, chats = [], companies, messag
         close_rate: percent(closedRequests, totalRequests)
       };
     })
-    .filter(row => Number(row.total_requests || 0) > 0 || Number(row.message_count || 0) > 0)
-    .sort((a, b) => b.total_requests - a.total_requests || b.closed_requests - a.closed_requests || b.message_count - a.message_count || a.name.localeCompare(b.name))
+    .filter(row => Number(row.total_requests || 0) > 0)
+    .sort((a, b) => b.total_requests - a.total_requests || b.closed_requests - a.closed_requests || a.name.localeCompare(b.name))
     .slice(0, 30);
 }
 
