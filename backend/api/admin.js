@@ -1705,12 +1705,25 @@ function bestPhotoSize(photos = []) {
 
 function buildMediaPayload(kind, source = {}, extra = {}) {
   if (!source || !source.file_id) return null;
+  const mimeType = source.mime_type || null;
+  let fileName = source.file_name || null;
+  if (!fileName && kind === 'voice') {
+    fileName = mimeType && mimeType.includes('mpeg') ? 'voice.mp3'
+      : mimeType && mimeType.includes('m4a') ? 'voice.m4a'
+      : mimeType && mimeType.includes('wav') ? 'voice.wav'
+      : 'voice.ogg';
+  } else if (!fileName && kind === 'audio') {
+    fileName = mimeType && mimeType.includes('mpeg') ? 'audio.mp3'
+      : mimeType && mimeType.includes('m4a') ? 'audio.m4a'
+      : mimeType && mimeType.includes('wav') ? 'audio.wav'
+      : 'audio.ogg';
+  }
   return {
     kind,
     file_id: source.file_id,
     file_unique_id: source.file_unique_id || null,
-    file_name: source.file_name || null,
-    mime_type: source.mime_type || null,
+    file_name: fileName,
+    mime_type: mimeType,
     file_size: source.file_size || null,
     width: source.width || null,
     height: source.height || null,

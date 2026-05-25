@@ -1477,7 +1477,7 @@
                           <div v-if="chatMessageBodyText(message)" class="chat-message-text"
                             v-html="chatMessageHtml(message)"></div>
                           <div class="chat-bubble-footer">
-                            <span v-if="message.request_text" class="chat-ticket">So‘rov</span>
+                            <span v-if="showRequestBadge(message)" class="chat-ticket">So‘rov</span>
                             <span class="chat-source">{{ messageSourceLabel(message) }}</span>
                             <time>{{ fmtChatTime(message.created_at) }}</time>
                           </div>
@@ -1670,7 +1670,7 @@
                           <div v-if="chatMessageBodyText(message)" class="chat-message-text"
                             v-html="chatMessageHtml(message)"></div>
                           <div class="chat-bubble-footer">
-                            <span v-if="message.request_text" class="chat-ticket">Ticket</span>
+                            <span v-if="showRequestBadge(message)" class="chat-ticket">Ticket</span>
                             <span class="chat-source">{{ messageSourceLabel(message) }}</span>
                             <time>{{ fmtChatTime(message.created_at) }}</time>
                           </div>
@@ -1958,7 +1958,7 @@
                           <div v-if="chatMessageBodyText(message)" class="chat-message-text"
                             v-html="chatMessageHtml(message)"></div>
                           <div class="chat-bubble-footer">
-                            <span v-if="message.request_text" class="chat-ticket">So‘rov</span>
+                            <span v-if="showRequestBadge(message)" class="chat-ticket">So‘rov</span>
                             <span class="chat-source">{{ messageSourceLabel(message) }}</span>
                             <time>{{ fmtChatTime(message.created_at) }}</time>
                           </div>
@@ -2182,7 +2182,7 @@
                     <div v-if="chatMessageBodyText(message)" class="chat-message-text"
                       v-html="chatMessageHtml(message)"></div>
                     <div class="chat-bubble-footer">
-                      <span v-if="message.request_text" class="chat-ticket">So‘rov</span>
+                      <span v-if="showRequestBadge(message)" class="chat-ticket">So‘rov</span>
                       <span class="chat-source">{{ messageSourceLabel(message) }}</span>
                       <time>{{ fmtChatTime(message.created_at) }}</time>
                     </div>
@@ -4851,6 +4851,18 @@ function chatMessageBodyText(message = {}) {
     if (kind === 'document' && (text === 'Faylli xabar' || text === 'Fayl' || text === message.media.file_name)) return '';
   }
   return text;
+}
+
+function showRequestBadge(message = {}) {
+  if (!String(message?.request_text || '').trim()) return false;
+  const direction = String(message?.direction || '').toLowerCase();
+  const origin = String(message?.origin_type || message?.actor_type || '').toLowerCase();
+  const type = String(message?.type || '').toLowerCase();
+  const classification = String(message?.classification || '').toLowerCase();
+  if (direction === 'outbound' || origin === 'employee') return false;
+  if (['employee_reply', 'admin_reply', 'solution'].includes(type)) return false;
+  if (['employee_message', 'admin_reply', 'ai_reply', 'bot_reply', 'bot_broadcast', 'bot_notification', 'bot_message'].includes(classification)) return false;
+  return true;
 }
 
 const allowedChatHtmlTags = new Set(['B', 'STRONG', 'I', 'EM', 'U', 'INS', 'S', 'STRIKE', 'DEL', 'CODE', 'PRE', 'BR', 'A']);
