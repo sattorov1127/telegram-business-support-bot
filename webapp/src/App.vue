@@ -1772,19 +1772,13 @@
                   </span>
                 </div>
               </div>
-              <div v-if="employeeProfile.member_stats?.length" class="employee-member-stats">
-                <small>Menejerlar bo‘yicha alohida statistika</small>
-                <div class="employee-member-stat-grid">
-                  <button v-for="member in employeeProfile.member_stats" :key="supportRowKey(member)"
-                    type="button" class="employee-member-stat-card" @click="openEmployeeCompanies(member)">
-                    <b>{{ member.full_name || member.username || 'Menejer' }}</b>
-                    <span>Yopilgan: {{ fmtNumber(member.closed_requests) }}</span>
-                    <span>Guruh/chat: {{ fmtNumber(member.handled_chats) }}</span>
-                    <span>O‘rtacha: {{ fmtMinutes(member.avg_close_minutes) }}</span>
-                    <span>SLA: {{ fmtPercent(member.sla) }}</span>
-                  </button>
+              <section v-if="employeeProfile.member_stats?.length" class="employee-member-breakdown">
+                <div class="detail-section-head">
+                  <b>Menejerlar bo‘yicha alohida statistika</b>
                 </div>
-              </div>
+                <DataTable :columns="managerMemberColumns" :rows="employeeProfile.member_stats"
+                  empty="Menejer statistikasi topilmadi" :on-cell-action="handleTableCellAction" :page-size="10" />
+              </section>
               <div class="employee-profile-mini-stats">
                 <span>
                   <small>Yopilgan</small>
@@ -4494,6 +4488,14 @@ const supportSummaryEmployeeColumns = [
   { key: 'open_requests', label: 'Ochiq', format: fmtNumber, action: 'employeeCompanies' },
   { key: 'avg_close_minutes', label: 'O‘rtacha javob', format: fmtMinutes, action: 'employeeCompanies' },
   { key: 'sla', label: 'SLA', format: fmtPercent, action: 'employeeCompanies' }
+];
+
+const managerMemberColumns = [
+  { key: 'full_name', label: 'Menejer', action: 'employeeCompanies' },
+  { key: 'closed_requests', label: 'Yopilgan', format: fmtNumber },
+  { key: 'handled_chats', label: 'Guruh/chat', format: fmtNumber },
+  { key: 'avg_close_minutes', label: 'O‘rtacha vaqt', format: fmtMinutes },
+  { key: 'sla', label: 'SLA', format: fmtPercent }
 ];
 
 const employeeColumns = [

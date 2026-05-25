@@ -4571,6 +4571,10 @@ tbody tr:hover {
   margin-top: 10px;
 }
 
+.employee-member-breakdown {
+  margin-top: 10px;
+}
+
 .employee-member-stats small {
   color: var(--muted);
   font-size: 12px;
