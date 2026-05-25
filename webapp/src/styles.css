@@ -4490,37 +4490,6 @@ tbody tr:hover {
 .employee-profile-avatar-wrap {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-}
-
-.employee-manager-toggle {
-  width: 28px;
-  height: 28px;
-  display: inline-grid;
-  place-items: center;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--surface);
-  color: var(--muted-strong);
-  cursor: pointer;
-  transition: transform .18s ease, border-color .18s ease, color .18s ease, background .18s ease;
-}
-
-.employee-manager-toggle:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: rgba(37, 99, 235, .08);
-}
-
-.employee-manager-toggle.open {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: rgba(37, 99, 235, .1);
-}
-
-.employee-manager-toggle span {
-  font-size: 16px;
-  line-height: 1;
 }
 
 .employee-profile-avatar,
@@ -4557,6 +4526,32 @@ tbody tr:hover {
   font-size: 22px;
   line-height: 1.15;
   font-weight: 900;
+}
+
+.employee-manager-heading-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: inherit;
+  cursor: pointer;
+}
+
+.employee-manager-heading-toggle:hover .employee-manager-heading-icon,
+.employee-manager-heading-toggle.open .employee-manager-heading-icon {
+  color: var(--primary);
+}
+
+.employee-manager-heading-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  color: var(--muted-strong);
+  transition: color .18s ease;
 }
 
 .employee-profile-title p,

@@ -1749,16 +1749,6 @@
         <div class="employee-support-modal">
           <header class="employee-support-head">
             <span class="employee-profile-avatar-wrap">
-              <button
-                v-if="employeeProfile.employee?.member_employees?.length || employeeProfile.member_stats?.length"
-                type="button"
-                class="employee-manager-toggle"
-                :class="{ open: employeeManagerDetailsOpen }"
-                :title="employeeManagerDetailsOpen ? 'Menejer ma’lumotlarini yopish' : 'Menejer ma’lumotlarini ochish'"
-                @click="employeeManagerDetailsOpen = !employeeManagerDetailsOpen"
-              >
-                <span aria-hidden="true">{{ employeeManagerDetailsOpen ? '▾' : '▸' }}</span>
-              </button>
               <img v-if="employeeAvatarUrl(employeeProfile.employee)" class="employee-profile-avatar"
                 :class="{ premium: isEmployeePremium(employeeProfile.employee) }"
                 :data-tooltip="employeePremiumTooltip(employeeProfile.employee) || null"
@@ -1770,7 +1760,20 @@
                 }}</span>
             </span>
             <div class="employee-profile-title">
-              <h2>{{ employeeProfile.employee?.full_name || employeeProfile.employee?.username || 'Xodim' }}</h2>
+              <h2>
+                <button
+                  v-if="employeeProfile.employee?.member_employees?.length || employeeProfile.member_stats?.length"
+                  type="button"
+                  class="employee-manager-heading-toggle"
+                  :class="{ open: employeeManagerDetailsOpen }"
+                  :title="employeeManagerDetailsOpen ? 'Menejer ma’lumotlarini yopish' : 'Menejer ma’lumotlarini ochish'"
+                  @click="employeeManagerDetailsOpen = !employeeManagerDetailsOpen"
+                >
+                  <span class="employee-manager-heading-icon" aria-hidden="true">{{ employeeManagerDetailsOpen ? '▾' : '▸' }}</span>
+                  <span>{{ employeeProfile.employee?.full_name || employeeProfile.employee?.username || 'Xodim' }}</span>
+                </button>
+                <template v-else>{{ employeeProfile.employee?.full_name || employeeProfile.employee?.username || 'Xodim' }}</template>
+              </h2>
               <p>Support yozishmalari</p>
               <span>Davr: {{ selectedPeriodLabel }}</span>
               <div
