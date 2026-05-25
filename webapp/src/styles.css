@@ -4549,7 +4549,10 @@ tbody tr:hover {
 .employee-manager-heading-icon {
   display: inline-grid;
   place-items: center;
-  width: 20px;
+  width: 28px;
+  font-size: 28px;
+  font-weight: 900;
+  line-height: 1;
   color: var(--muted-strong);
   transition: color .18s ease;
 }
