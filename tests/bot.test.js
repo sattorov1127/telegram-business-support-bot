@@ -1165,6 +1165,9 @@ async function testEmployeePlainAnswerClosesLatestOpenRequest() {
 
     assert.strictEqual(result.status, 200);
     assert.strictEqual(result.payload.handled, 'message');
+    const savedMessage = inserted.find(item => item.table === 'messages');
+    assert.ok(savedMessage);
+    assert.strictEqual(savedMessage.rows[0].classification, 'employee_message');
     const closePatch = patched.find(item => item.table === 'support_requests');
     assert.ok(closePatch);
     assert.strictEqual(closePatch.values.status, 'closed');
@@ -1835,6 +1838,67 @@ async function testBotRemovalMarksGroupInactive() {
   }
 }
 
+async function testGroupVoicePlaceholderOpensRequest() {
+  const originalInsert = supabase.insert;
+  const originalSelect = supabase.select;
+  const originalFetch = global.fetch;
+  const inserted = [];
+  clearBotSettingsCache();
+
+  supabase.select = async (table, query = {}) => {
+    if (table === 'bot_settings') {
+      return [
+        { key: 'request_detection', value: { mode: 'keyword', min_text_length: 10 } }
+      ];
+    }
+    if (table === 'support_requests' && query.status === 'eq.open') return [];
+    return [];
+  };
+  supabase.insert = async (table, rows) => {
+    inserted.push({ table, rows });
+    if (table === 'support_requests') return rows.map(row => ({ id: 'request-voice-1', ...row }));
+    return rows.map(row => ({ id: `${table}-row`, ...row }));
+  };
+  global.fetch = async (_url, _options) => ({
+    ok: true,
+    json: async () => ({ ok: true, result: { message_id: 999 } })
+  });
+
+  try {
+    const result = await callHandler({
+      update_id: 200,
+      message: {
+        message_id: 700,
+        date: 1778737735,
+        chat: { id: -5148279578, type: 'group', title: 'Uyqur | Navoiy' },
+        from: { id: 6384605164, is_bot: false, first_name: 'Shuhrat' },
+        voice: {
+          file_id: 'AwACAgIAAxkBAAICvGoFYkcVUq15_6jRGOFLXK3-wOOkAAIilAACYYIwSCeqiesEiH7lOwQ',
+          duration: 16,
+          file_size: 342008,
+          mime_type: 'audio/ogg',
+          file_unique_id: 'AgADIpQAAmGCMEg'
+        }
+      }
+    });
+
+    assert.strictEqual(result.status, 200);
+    assert.strictEqual(result.payload.handled, 'message');
+    const messageInsert = inserted.find(item => item.table === 'messages');
+    assert.ok(messageInsert);
+    assert.strictEqual(messageInsert.rows[0].classification, 'request');
+    assert.strictEqual(messageInsert.rows[0].text, 'Ovozli xabar');
+    const requestInsert = inserted.find(item => item.table === 'support_requests');
+    assert.ok(requestInsert);
+    assert.strictEqual(requestInsert.rows[0].initial_text, 'Ovozli xabar');
+  } finally {
+    supabase.insert = originalInsert;
+    supabase.select = originalSelect;
+    global.fetch = originalFetch;
+    clearBotSettingsCache();
+  }
+}
+
 (async () => {
   await testStartRepliesWhenDbTrackingFails();
   await testChatMemberUpdateRegistersGroup();
@@ -1862,6 +1926,7 @@ async function testBotRemovalMarksGroupInactive() {
   await testMainGroupBroadcastDeletePreview();
   await testMainGroupBroadcastDeleteConfirmDeletesAndReports();
   await testBotRemovalMarksGroupInactive();
+  await testGroupVoicePlaceholderOpensRequest();
   console.log('Bot tests passed');
 })().catch(error => {
   console.error(error);

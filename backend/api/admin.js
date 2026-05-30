@@ -410,7 +410,7 @@ function buildPeriodSummary(requests, periodKey, label, keys, messages = [], emp
   };
 }
 
-function buildEmployeePerformance({ requests, employees, messages = [], periodKey, keys, chats = [], companyMembers = [], companyInfoCompanies = [] }) {
+function buildEmployeePerformance({ requests, employees, messages = [], periodKey, keys, chats = [], companyMembers = [], companyInfoCompanies = [], businessConnectionEmployee = new Map() }) {
   const employeeMap = new Map(employees.map(employee => [employee.id, employee]).filter(([id]) => id));
   const employeeByTgId = new Map(employees.map(employee => [telegramIdKey(employee.tg_user_id), employee]).filter(([id]) => id));
   const employeeByUsername = new Map(employees.map(employee => [String(employee.username || '').toLowerCase().trim(), employee]).filter(([username]) => username));
@@ -418,7 +418,8 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
   const employeeMaps = buildEmployeeMaps(employees);
   const chatMap = new Map(chats.map(chat => [telegramIdKey(chat.chat_id), chat]));
   const companySupportByCompanyId = buildCompanySupportByCompanyId(companyInfoCompanies, employeeMaps);
-  const resolveOptions = { chatMap, companySupportByCompanyId };
+  const externalChatCompanyMap = buildCompanyInfoChatMap(companyInfoCompanies);
+  const resolveOptions = { chatMap, companySupportByCompanyId, businessConnectionEmployee, externalChatCompanyMap };
   const messagesByConversation = new Map();
   messages.forEach(message => {
     const key = conversationScopeKey(message);
@@ -431,7 +432,8 @@ function buildEmployeePerformance({ requests, employees, messages = [], periodKe
     const directCompanyId = String(request.company_id || '').trim();
     if (directCompanyId) return `id:${directCompanyId}`;
     const chat = chatMap.get(telegramIdKey(request.chat_id));
-    const chatCompanyId = String(chat?.company_id || '').trim();
+    const chatCompanyId = String(chat?.company_id || '').trim()
+      || String(externalChatCompanyMap.get(telegramIdKey(request.chat_id))?.company_id || '').trim();
     if (chatCompanyId) return `id:${chatCompanyId}`;
     const companyName = String(request.company_name || chat?.company_name || '').trim().toLowerCase().replace(/\s+/g, ' ');
     return companyName ? `name:${companyName}` : '';
@@ -1086,6 +1088,7 @@ async function getDashboardAnalytics(query = {}) {
     order: supabase.order('created_at', false),
     ...rangeQuery('created_at', window)
   }, 'chat_id', chatIds, { maxRows: window ? 15000 : 40000 }) : [];
+  const businessConnectionEmployee = await loadBusinessConnectionEmployeeMap(requests, messages, employees);
 
   const employeeMaps = buildEmployeeMaps(employees);
 
@@ -1120,7 +1123,7 @@ async function getDashboardAnalytics(query = {}) {
   return {
     periods: Object.fromEntries(periodContext.map(p => [p.key, p.summary])),
     periodDates: Object.fromEntries(periodContext.map(p => [p.key, { current: p.currentLabel, prev: p.prevLabel }])),
-    employeePerformance: Object.fromEntries(periods.map(([key]) => [key, buildEmployeePerformance({ requests, employees, messages, periodKey: key, keys, chats: analyticsChats, companyMembers, companyInfoCompanies })])),
+    employeePerformance: Object.fromEntries(periods.map(([key]) => [key, buildEmployeePerformance({ requests, employees, messages, periodKey: key, keys, chats: analyticsChats, companyMembers, companyInfoCompanies, businessConnectionEmployee })])),
     chatPerformance: Object.fromEntries(periods.map(([key]) => [key, buildChatPerformance({ requests, chats: analyticsChats, periodKey: key, keys })])),
     groupPerformance: Object.fromEntries(periods.map(([key]) => [key, buildGroupPerformance({ requests, chats: analyticsChats, periodKey: key, keys })])),
     responseTimeTrend: Object.fromEntries(periods.map(([key]) => [key, buildResponseTimeTrend(requests, key, keys, messages, employeeMaps)])),
@@ -1503,6 +1506,32 @@ function isEmployeeConversationMessage(message = {}, employeeMaps = buildEmploye
   return ['admin_send', 'admin_reply', 'admin_request_reply'].includes(updateKind);
 }
 
+function buildBusinessConnectionEmployeeMap(connections = [], employeeMaps = buildEmployeeMaps([])) {
+  const map = new Map();
+  connections.forEach(connection => {
+    const connectionId = normalizeBusinessConnectionId(connection.connection_id);
+    if (!connectionId) return;
+    const employee = employeeMaps.byTgId.get(telegramIdKey(connection.tg_user_id));
+    if (employee) map.set(connectionId, employeeSummary(employee));
+  });
+  return map;
+}
+
+async function loadBusinessConnectionEmployeeMap(requests = [], messages = [], employees = []) {
+  const employeeMaps = buildEmployeeMaps(employees);
+  const connectionIds = [...new Set([
+    ...requests.map(request => normalizeBusinessConnectionId(request.business_connection_id)),
+    ...messages.map(message => normalizeBusinessConnectionId(message.business_connection_id))
+  ].filter(Boolean))];
+  if (!connectionIds.length) return new Map();
+  const connections = await supabase.select('business_connections', {
+    select: 'connection_id,tg_user_id',
+    connection_id: supabase.inList(connectionIds),
+    limit: String(Math.min(connectionIds.length, 5000))
+  }).catch(() => []);
+  return buildBusinessConnectionEmployeeMap(connections, employeeMaps);
+}
+
 function buildCompanySupportByCompanyId(companies = [], employeeMaps = buildEmployeeMaps([])) {
   const map = new Map();
   companies.forEach(company => {
@@ -1575,10 +1604,13 @@ function enrichChatsWithCompanyAssignments(chats = [], companyInfoCompanies = []
   });
 }
 
-function resolveCompanyIdForRequest(request = {}, chatMap = new Map()) {
-  if (request.company_id) return String(request.company_id);
-  const chat = chatMap.get(telegramIdKey(request.chat_id));
-  return chat?.company_id ? String(chat.company_id) : '';
+function resolveCompanyIdForRequest(request = {}, chatMap = new Map(), externalChatCompanyMap = new Map()) {
+  if (request.company_id) return String(request.company_id).trim();
+  const chatKey = telegramIdKey(request.chat_id);
+  const chat = chatMap.get(chatKey);
+  if (chat?.company_id) return String(chat.company_id).trim();
+  const external = externalChatCompanyMap.get(chatKey);
+  return external?.company_id ? String(external.company_id).trim() : '';
 }
 
 function buildChatToEmployeeIdMap(chats = [], companyMembers = []) {
@@ -1595,15 +1627,39 @@ function buildChatToEmployeeIdMap(chats = [], companyMembers = []) {
 }
 
 function resolveRequestResponsibleEmployee(request, messages = [], employeeMaps = buildEmployeeMaps([]), chatToEmployeeId = new Map(), options = {}) {
-  const { chatMap = new Map(), companySupportByCompanyId = new Map() } = options;
+  const {
+    chatMap = new Map(),
+    companySupportByCompanyId = new Map(),
+    businessConnectionEmployee = new Map(),
+    externalChatCompanyMap = new Map()
+  } = options;
+
+  const companyId = resolveCompanyIdForRequest(request, chatMap, externalChatCompanyMap);
+  if (companyId && companySupportByCompanyId.has(companyId)) {
+    return companySupportByCompanyId.get(companyId);
+  }
+
+  const connectionId = normalizeBusinessConnectionId(request.business_connection_id);
+  if (connectionId && businessConnectionEmployee.has(connectionId)) {
+    return businessConnectionEmployee.get(connectionId);
+  }
+
+  if (['private', 'business'].includes(String(request.source_type || '').toLowerCase())) {
+    const chat = chatMap.get(telegramIdKey(request.chat_id));
+    const chatConnectionId = normalizeBusinessConnectionId(chat?.business_connection_id);
+    if (chatConnectionId && businessConnectionEmployee.has(chatConnectionId)) {
+      return businessConnectionEmployee.get(chatConnectionId);
+    }
+  }
+
   const requestTime = new Date(request.created_at || 0).getTime();
   const employeeMessages = messages
     .filter(message => isEmployeeConversationMessage(message, employeeMaps))
     .map(message => {
-      const employee = (employeeMaps && employeeMaps.byId && employeeMaps.byId.get(message.employee_id)) || 
-                       (employeeMaps && employeeMaps.byTgId && employeeMaps.byTgId.get(telegramIdKey(message.from_tg_user_id))) ||
-                       (message.from_username && employeeMaps && employeeMaps.byUsername ? employeeMaps.byUsername.get(String(message.from_username).toLowerCase().trim()) : null) ||
-                       (message.from_name && employeeMaps && employeeMaps.byName ? employeeMaps.byName.get(String(message.from_name).toLowerCase().trim()) : null);
+      const employee = (employeeMaps && employeeMaps.byId && employeeMaps.byId.get(message.employee_id))
+        || (employeeMaps && employeeMaps.byTgId && employeeMaps.byTgId.get(telegramIdKey(message.from_tg_user_id)))
+        || (message.from_username && employeeMaps && employeeMaps.byUsername ? employeeMaps.byUsername.get(String(message.from_username).toLowerCase().trim()) : null)
+        || (message.from_name && employeeMaps && employeeMaps.byName ? employeeMaps.byName.get(String(message.from_name).toLowerCase().trim()) : null);
       return { message, employee, time: new Date(message.created_at || 0).getTime() };
     })
     .filter(item => item.employee && Number.isFinite(item.time));
@@ -1620,11 +1676,6 @@ function resolveRequestResponsibleEmployee(request, messages = [], employeeMaps 
   if (assignedEmpId) {
     const emp = employeeMaps?.byId?.get(assignedEmpId);
     if (emp) return employeeSummary(emp);
-  }
-
-  const companyId = resolveCompanyIdForRequest(request, chatMap);
-  if (companyId && companySupportByCompanyId.has(companyId)) {
-    return companySupportByCompanyId.get(companyId);
   }
 
   return null;
@@ -1662,7 +1713,7 @@ function resolveRequestResponsibleEmployeeFromEvents(request = {}, events = [], 
   return afterRequest ? afterRequest.employee : null;
 }
 
-function enrichOpenRequests({ requests = [], chats = [], messages = [], employees = [], companyMembers = [], companyInfoCompanies = [] }) {
+function enrichOpenRequests({ requests = [], chats = [], messages = [], employees = [], companyMembers = [], companyInfoCompanies = [], businessConnectionEmployee = new Map() }) {
   const now = new Date();
   const chatMap = new Map(chats.map(chat => [telegramIdKey(chat.chat_id), chat]));
   const messagesByConversation = new Map();
@@ -1674,7 +1725,8 @@ function enrichOpenRequests({ requests = [], chats = [], messages = [], employee
   const employeeMaps = buildEmployeeMaps(employees);
   const chatToEmployeeId = buildChatToEmployeeIdMap(chats, companyMembers);
   const companySupportByCompanyId = buildCompanySupportByCompanyId(companyInfoCompanies, employeeMaps);
-  const resolveOptions = { chatMap, companySupportByCompanyId };
+  const externalChatCompanyMap = buildCompanyInfoChatMap(companyInfoCompanies);
+  const resolveOptions = { chatMap, companySupportByCompanyId, businessConnectionEmployee, externalChatCompanyMap };
 
   return requests.map(request => {
     const chat = chatMap.get(telegramIdKey(request.chat_id)) || {};
@@ -1728,13 +1780,17 @@ async function getOpenRequestInsights() {
     getCachedCompanyInfo().catch(() => null)
   ]);
 
+  const businessConnectionEmployee = await loadBusinessConnectionEmployeeMap(requests, messages, employees);
+  const companyInfoCompanies = companyInfoCache?.companies || [];
+  const enrichedChats = enrichChatsWithCompanyAssignments(chats, companyInfoCompanies, []);
   const enriched = enrichOpenRequests({
     requests,
-    chats,
+    chats: enrichedChats,
     messages,
     employees,
     companyMembers,
-    companyInfoCompanies: companyInfoCache?.companies || []
+    companyInfoCompanies,
+    businessConnectionEmployee
   });
   const groupOpen = enriched.filter(request => request.source_type === 'group').length;
   const chatOpen = enriched.filter(request => request.source_type !== 'group').length;
@@ -2264,9 +2320,9 @@ async function listRequests(query) {
   const requestIds = [...new Set(requests.map(request => request.id).filter(Boolean))];
   const companyIds = [...new Set(requests.map(request => request.company_id).filter(Boolean))];
 
-  const [chats, requestCompanies, employees, messages, events] = await Promise.all([
+  const [chats, requestCompanies, employees, messages, events, companyMembers, companyInfoCache] = await Promise.all([
     chatIds.length ? selectPagedByChunks('tg_chats', {
-      select: 'chat_id,title,username,source_type,company_id,last_message_at'
+      select: 'chat_id,title,username,source_type,company_id,business_connection_id,last_message_at'
     }, 'chat_id', chatIds, { maxRows: 10000 }) : Promise.resolve([]),
     companyIds.length ? selectPagedByChunks('companies', {
       select: 'id,name,legal_name,is_active'
@@ -2282,11 +2338,11 @@ async function listRequests(query) {
     requestIds.length ? selectPagedByChunks('request_events', {
       select: 'id,request_id,chat_id,tg_message_id,event_type,actor_tg_id,actor_name,employee_id,text,created_at',
       order: supabase.order('created_at', false)
-    }, 'request_id', requestIds, { maxRows: 40000 }) : Promise.resolve([])
+    }, 'request_id', requestIds, { maxRows: 40000 }) : Promise.resolve([]),
+    supabase.select('company_members', { select: 'company_id,employee_id,member_type,is_active', limit: '5000' }).catch(() => []),
+    getCachedCompanyInfo().catch(() => null)
   ]);
 
-  const chatMap = new Map(chats.map(chat => [telegramIdKey(chat.chat_id), chat]));
-  const employeeMaps = buildEmployeeMaps(employees);
   const messagesByConversation = new Map();
   messages.forEach(message => {
     const key = conversationScopeKey(message);
@@ -2308,6 +2364,15 @@ async function listRequests(query) {
     }, 'id', missingCompanyIds, { maxRows: 10000 })
     : [];
   const companyMap = new Map([...requestCompanies, ...chatCompanies].map(company => [company.id, company]).filter(([id]) => id));
+  const companyInfoCompanies = companyInfoCache?.companies || [];
+  const enrichedChats = enrichChatsWithCompanyAssignments(chats, companyInfoCompanies, [...requestCompanies, ...chatCompanies]);
+  const chatMap = new Map(enrichedChats.map(chat => [telegramIdKey(chat.chat_id), chat]));
+  const employeeMaps = buildEmployeeMaps(employees);
+  const chatToEmployeeId = buildChatToEmployeeIdMap(enrichedChats, companyMembers);
+  const companySupportByCompanyId = buildCompanySupportByCompanyId(companyInfoCompanies, employeeMaps);
+  const businessConnectionEmployee = await loadBusinessConnectionEmployeeMap(requests, messages, employees);
+  const externalChatCompanyMap = buildCompanyInfoChatMap(companyInfoCompanies);
+  const resolveOptions = { chatMap, companySupportByCompanyId, businessConnectionEmployee, externalChatCompanyMap };
 
   return requests.map(request => {
     const chat = chatMap.get(telegramIdKey(request.chat_id)) || {};
@@ -2315,7 +2380,13 @@ async function listRequests(query) {
     const company = companyId ? companyMap.get(companyId) : null;
     const closer = employeeMaps.byId.get(request.closed_by_employee_id) || employeeMaps.byTgId.get(telegramIdKey(request.closed_by_tg_id)) || null;
     const responsible = resolveRequestResponsibleEmployeeFromEvents(request, eventsByRequestId.get(request.id) || [], employeeMaps)
-      || resolveRequestResponsibleEmployee(request, messagesByConversation.get(conversationScopeKey(request)) || [], employeeMaps)
+      || resolveRequestResponsibleEmployee(
+        request,
+        messagesByConversation.get(conversationScopeKey(request)) || [],
+        employeeMaps,
+        chatToEmployeeId,
+        resolveOptions
+      )
       || employeeSummary(closer);
     const responsibleName = responsible?.full_name || request.closed_by_name || '';
     return {
@@ -2846,7 +2917,7 @@ async function getCompanyGroupActivity(query = {}) {
       })
       .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')));
     const allChatMessages = messagesByChat.get(chatKey) || [];
-    if (!chatRequests.length && !allChatMessages.length) return;
+    if (!chatRequests.length) return;
     const chatMessages = allChatMessages
       .slice(0, COMPANY_GROUP_ACTIVITY_CONVERSATION_LIMIT)
       .sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')));
@@ -3245,15 +3316,34 @@ async function getEmployeeActivity(query = {}) {
     messagesByConversation.get(key).push(message);
   });
   const employeeMaps = buildEmployeeMaps(allEmployees.length ? allEmployees : [enrichedEmployee]);
+  const businessConnectionEmployee = await loadBusinessConnectionEmployeeMap(requests, allChatMessages, allEmployees.length ? allEmployees : [enrichedEmployee]);
+  const companyInfoCache = await getCachedCompanyInfo().catch(() => null);
+  const companyInfoCompanies = companyInfoCache?.companies || [];
+  const enrichedActivityChats = enrichChatsWithCompanyAssignments(chats, companyInfoCompanies, []);
+  const activityChatMap = new Map(enrichedActivityChats.map(chat => [telegramIdKey(chat.chat_id), chat]));
+  const companySupportByCompanyId = buildCompanySupportByCompanyId(companyInfoCompanies, employeeMaps);
+  const externalChatCompanyMap = buildCompanyInfoChatMap(companyInfoCompanies);
+  const resolveOptions = {
+    chatMap: activityChatMap,
+    companySupportByCompanyId,
+    businessConnectionEmployee,
+    externalChatCompanyMap
+  };
   const selectedEmployeeId = String(enrichedEmployee.id || '').trim();
   const selectedTgUserId = telegramIdKey(enrichedEmployee.tg_user_id);
   const isEmployeePrivateChatId = chatId => {
     const key = telegramIdKey(chatId);
-    const chat = chatMap.get(key) || {};
+    const chat = activityChatMap.get(key) || {};
     return employeeMaps.tgIds.has(key) && isPrivateLikeChat({ source_type: chat.source_type || 'private' });
   };
   function requestResponsibleMatchesEmployee(request = {}) {
-    const responsible = resolveRequestResponsibleEmployee(request, messagesByConversation.get(conversationScopeKey(request)) || [], employeeMaps);
+    const responsible = resolveRequestResponsibleEmployee(
+      request,
+      messagesByConversation.get(conversationScopeKey(request)) || [],
+      employeeMaps,
+      new Map(),
+      resolveOptions
+    );
     if (!responsible) return false;
     if (selectedEmployeeId && String(responsible.employee_id || '') === selectedEmployeeId) return true;
     return Boolean(selectedTgUserId && telegramIdKey(responsible.tg_user_id) === selectedTgUserId);

@@ -1333,6 +1333,25 @@ async function testCompanyGroupActivityLimitsLargeConversationPayload() {
     raw: {},
     created_at: new Date(Date.parse('2026-04-30T08:00:00.000Z') + index * 1000).toISOString()
   }));
+  const request = {
+    id: 'request-heavy',
+    source_type: 'group',
+    chat_id: chatId,
+    company_id: companyId,
+    customer_tg_id: 901,
+    customer_name: 'Heavy customer',
+    customer_username: '',
+    initial_message_id: 2001,
+    initial_text: 'Heavy request',
+    status: 'open',
+    business_connection_id: null,
+    closed_at: null,
+    closed_by_employee_id: null,
+    closed_by_tg_id: null,
+    closed_by_name: '',
+    done_message_id: null,
+    created_at: messages[0].created_at
+  };
 
   supabase.select = async (table, query = {}) => {
     if (table === 'companies') return [{ id: companyId, name: 'Heavy Co', brand: 'HV', is_active: true }];
@@ -1345,7 +1364,7 @@ async function testCompanyGroupActivityLimitsLargeConversationPayload() {
       is_active: true,
       last_message_at: messages[messages.length - 1].created_at
     }];
-    if (table === 'support_requests') return [];
+    if (table === 'support_requests') return [request];
     if (table === 'messages') {
       const orderedMessages = query.order === 'created_at.desc' ? messages.slice().reverse() : messages;
       const offset = Number.parseInt(query.offset || '0', 10);
@@ -1365,6 +1384,104 @@ async function testCompanyGroupActivityLimitsLargeConversationPayload() {
     assert.strictEqual(group.conversation_truncated, true);
     assert.strictEqual(group.conversation[0].text, 'Message 261');
     assert.strictEqual(group.conversation[group.conversation.length - 1].text, 'Message 1760');
+  } finally {
+    supabase.select = originalSelect;
+  }
+}
+
+async function testCompanyGroupActivitySkipsGroupsWithoutTickets() {
+  const originalSelect = supabase.select;
+  const companyId = 'company-ticket-only-groups';
+  const ticketChatId = -100710;
+  const messageOnlyChatId = -100711;
+
+  supabase.select = async (table) => {
+    if (table === 'companies') return [{ id: companyId, name: 'Ticket Only Groups', is_active: true }];
+    if (table === 'employees') return [];
+    if (table === 'tg_chats') {
+      return [
+        {
+          chat_id: ticketChatId,
+          title: 'Ticket group',
+          source_type: 'group',
+          company_id: companyId,
+          is_active: true,
+          last_message_at: '2026-04-30T08:10:00.000Z'
+        },
+        {
+          chat_id: messageOnlyChatId,
+          title: 'Message only group',
+          source_type: 'group',
+          company_id: companyId,
+          is_active: true,
+          last_message_at: '2026-04-30T08:11:00.000Z'
+        }
+      ];
+    }
+    if (table === 'support_requests') {
+      return [{
+        id: 'request-ticket-group',
+        source_type: 'group',
+        chat_id: ticketChatId,
+        company_id: companyId,
+        customer_tg_id: 123,
+        customer_name: 'Mijoz',
+        customer_username: '',
+        initial_message_id: 51,
+        initial_text: 'Ticket bor',
+        status: 'open',
+        business_connection_id: null,
+        closed_at: null,
+        closed_by_employee_id: null,
+        closed_by_tg_id: null,
+        closed_by_name: '',
+        done_message_id: null,
+        created_at: '2026-04-30T08:00:00.000Z'
+      }];
+    }
+    if (table === 'messages') {
+      return [
+        {
+          id: 'm-ticket',
+          tg_message_id: 51,
+          chat_id: ticketChatId,
+          from_tg_user_id: 123,
+          from_name: 'Mijoz',
+          from_username: '',
+          employee_id: null,
+          source_type: 'group',
+          classification: 'request',
+          text: 'Ticket bor',
+          raw: {},
+          created_at: '2026-04-30T08:00:00.000Z'
+        },
+        {
+          id: 'm-message-only',
+          tg_message_id: 52,
+          chat_id: messageOnlyChatId,
+          from_tg_user_id: 124,
+          from_name: 'Oddiy user',
+          from_username: '',
+          employee_id: null,
+          source_type: 'group',
+          classification: 'message',
+          text: 'Faqat xabar',
+          raw: {},
+          created_at: '2026-04-30T08:01:00.000Z'
+        }
+      ];
+    }
+    if (table === 'request_events') return [];
+    return [];
+  };
+
+  try {
+    const result = await callAdmin('companyGroupActivity', { query: { period: 'all', company_id: companyId } });
+    assert.strictEqual(result.status, 200);
+    const company = result.payload.data.companies[0];
+    assert.strictEqual(company.groups.length, 1);
+    assert.strictEqual(company.groups[0].chat_id, ticketChatId);
+    assert.strictEqual(company.groups[0].total_requests, 1);
   } finally {
     supabase.select = originalSelect;
   }
@@ -3896,6 +4013,7 @@ async function run() {
   await testChatDetailShowsTelegramMemberServiceMessages();
   await testCompanyGroupActivityReturnsLinkedGroupMessagesWithTickets();
   await testCompanyGroupActivityLimitsLargeConversationPayload();
+  await testCompanyGroupActivitySkipsGroupsWithoutTickets();
   await testDashboardCompanyTicketsUseRegisteredGroupCompany();
   await testDashboardCompanyTicketsUseCompanyInfoGroupMapping();
   await testDashboardCompanyTicketsIncludeLinkedGroupMessagesWithoutRequests();

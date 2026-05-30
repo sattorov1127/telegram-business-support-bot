@@ -195,7 +195,7 @@
               <div class="card-header performance-head">
                 <div>
                   <div class="card-title">Hodimlar reytingi</div>
-                  <div class="card-note">Ticketlarni yopish, ochiq qoldiqlar va SLA bo‘yicha support natijasi. Ochiq ticketlar kompaniya mas’uli yoki guruhdagi javob bo‘yicha xodimga biriktiriladi.</div>
+                  <div class="card-note">Ticketlarni yopish, ochiq qoldiqlar va SLA bo‘yicha support natijasi. Ochiq ticketlar kompaniya mas’uli, guruh yoki support lichkasi (business connection) bo‘yicha xodimga biriktiriladi.</div>
                 </div>
                 <div class="card-header-actions" ref="rankingMenuRef">
                   <button class="btn-icon mini-icon" @click="rankingMenuOpen = !rankingMenuOpen" title="Sozlamalar">
@@ -2896,6 +2896,19 @@ function isManagerEmployee(row = {}) {
   return String(row.role || '').trim().toLowerCase() === 'manager';
 }
 
+function isUnassignedRankingRow(row = {}) {
+  const name = String(row.full_name || row.name || '').trim().toLowerCase();
+  return row.is_unassigned === true
+    || row.key === 'unassigned:open'
+    || name === 'biriktirilmagan';
+}
+
+function shouldShowInSupportRanking(row = {}) {
+  if (isUnassignedRankingRow(row)) return false;
+  if (row.is_manager_group) return true;
+  return isUyqurEmployee(row);
+}
+
 function hasEmployeeActivity(row = {}) {
   const numericKeys = ['closed_requests', 'open_requests', 'handled_chats', 'total_requests', 'message_count', 'customer_count'];
   if (numericKeys.some(key => Number(row?.[key] || 0) > 0)) return true;
@@ -3053,12 +3066,10 @@ const supportPerformanceRows = computed(() => {
     .filter(row => knownEmployeeKeys.has(supportRowKey(row)) && isUyqurEmployee(row));
 
   openSummaryMap.forEach(summary => {
-    const isUnassigned = summary.is_unassigned === true;
+    if (isUnassignedRankingRow(summary)) return;
     const summarySupportKey = supportRowKey(summary);
-    if (!isUnassigned) {
-      if (summarySupportKey && !knownEmployeeKeys.has(summarySupportKey)) return;
-      if (!isUyqurEmployee(summary)) return;
-    }
+    if (summarySupportKey && !knownEmployeeKeys.has(summarySupportKey)) return;
+    if (!isUyqurEmployee(summary)) return;
     rows.push({
       key: summary.key,
       id: summary.employee_id || '',
@@ -3067,10 +3078,10 @@ const supportPerformanceRows = computed(() => {
       username: summary.username || '',
       phone: '',
       role: 'support',
-      full_name: summary.full_name || (isUnassigned ? 'Biriktirilmagan' : 'Xodim'),
+      full_name: summary.full_name || 'Xodim',
       telegram_is_premium: false,
-      is_uyqur_employee: !isUnassigned,
-      is_unassigned: isUnassigned,
+      is_uyqur_employee: true,
+      is_unassigned: false,
       handled_chats: summary.chat_keys?.size || 0,
       closed_requests: 0,
       open_requests: Number(summary.open_requests || 0),
@@ -3131,9 +3142,11 @@ const supportPerformanceRows = computed(() => {
     });
   }
 
-  return rows.sort((a, b) => b.closed_requests - a.closed_requests
-    || b.assigned_company_count - a.assigned_company_count
-    || a.full_name.localeCompare(b.full_name));
+  return rows
+    .filter(shouldShowInSupportRanking)
+    .sort((a, b) => b.closed_requests - a.closed_requests
+      || b.assigned_company_count - a.assigned_company_count
+      || a.full_name.localeCompare(b.full_name));
 });
 const filteredMetricDetailRows = computed(() => {
   const rows = Array.isArray(metricDetail.value.rows) ? metricDetail.value.rows : [];
@@ -4145,7 +4158,9 @@ const supportPortfolioRows = computed(() => {
     .slice(0, 8);
 });
 const supportPortfolioChartMax = computed(() => Math.max(1, ...supportPortfolioRows.value.map(row => Number(row.count || 0))));
-const topSupportCards = computed(() => supportPerformanceRows.value.map((row, index) => {
+const topSupportCards = computed(() => supportPerformanceRows.value
+  .filter(shouldShowInSupportRanking)
+  .map((row, index) => {
   const employee = resolveEmployeeForCompany(row);
   const companies = visibleCompanyInfoRows.value.filter(company => companyMatchesEmployee(company, employee));
   const companySummary = companyPortfolioSummary(companies);
@@ -6090,15 +6105,36 @@ function employeeSummaryKey(row = {}) {
   return String(row.full_name || row.responsible_employee_name || '').trim().toLowerCase();
 }
 
+function findEmployeeMappingForOpenRequest(request = {}, employeeMappings = []) {
+  const reqEmpId = String(request.responsible_employee_id || request.employee_id || '').trim();
+  if (reqEmpId) {
+    const byId = employeeMappings.find(mapping => mapping.id === reqEmpId);
+    if (byId) return byId;
+  }
+
+  const reqUsername = normalizeSupportUsername(request.responsible_employee_username || request.support_username || '');
+  if (reqUsername) {
+    const byUsername = employeeMappings.find(mapping => mapping.username === reqUsername);
+    if (byUsername) return byUsername;
+  }
+
+  const reqEmpName = String(request.responsible_employee_name || request.support_name || '').trim().toLowerCase();
+  if (reqEmpName) {
+    const byName = employeeMappings.find(mapping => mapping.full_name === reqEmpName
+      || (mapping.full_name && (mapping.full_name.includes(reqEmpName) || reqEmpName.includes(mapping.full_name))));
+    if (byName) return byName;
+  }
+
+  return employeeMappings.find(mapping => {
+    if (request.company_id && mapping.companyIds.has(String(request.company_id).trim())) return true;
+    if (request.company_name && mapping.companyNames.has(normalizedCompanyName(request.company_name))) return true;
+    if (request.chat_id && mapping.chatIds.has(String(request.chat_id).trim())) return true;
+    return false;
+  }) || null;
+}
+
 function employeeOpenRequestSummaryMap() {
   const map = new Map();
-  
-  const knownEmployeeKeys = new Set([
-    ...employees.value.map(supportRowKey),
-    ...visibleCompanyInfoRows.value.filter(hasCompanySupport).map(c => 
-      supportRowKey({ username: c.uyqur_support_username, phone: c.uyqur_support_phone })
-    )
-  ].filter(Boolean));
 
   const employeeMappings = (employees.value || []).filter(emp => !isAdminLikeEmployee(emp)).map(emp => {
     const companies = (visibleCompanyInfoRows.value || []).filter(c => companyMatchesEmployee(c, emp));
@@ -6127,43 +6163,16 @@ function employeeOpenRequestSummaryMap() {
   });
 
   (filteredOpenRequests.value || []).forEach(request => {
-    let matchedEmp = null;
-    const fallbackKey = 'unassigned:open';
-    
-    const reqUsername = normalizeSupportUsername(request.responsible_employee_username || request.username);
-    const reqEmpId = String(request.responsible_employee_id || request.employee_id || '').trim();
-    const reqTgId = String(request.tg_user_id || '').trim();
-    const reqEmpName = String(request.responsible_employee_name || '').trim().toLowerCase();
-    
-    // Ochiq qolganlar birinchi navbatda xodimga biriktirilgan kompaniya/guruh bo'yicha hisoblanadi.
-    matchedEmp = employeeMappings.find(m => {
-      if (request.company_id && m.companyIds.has(String(request.company_id).trim())) return true;
-      if (request.company_name && m.companyNames.has(normalizedCompanyName(request.company_name))) return true;
-      if (request.chat_id && m.chatIds.has(String(request.chat_id).trim())) return true;
-      return false;
-    });
+    const matchedEmp = findEmployeeMappingForOpenRequest(request, employeeMappings);
+    if (!matchedEmp || !isUyqurEmployee(matchedEmp.employee)) return;
 
-    if (!matchedEmp) {
-      matchedEmp = employeeMappings.find(m => {
-        if (reqUsername && m.username === reqUsername) return true;
-        if (reqEmpId && m.id === reqEmpId) return true;
-        if (reqTgId && m.tg_user_id === reqTgId) return true;
-        if (reqEmpName && m.full_name === reqEmpName) return true;
-        return false;
-      });
-    }
-    
-    let key = matchedEmp ? matchedEmp.key : employeeSummaryKey(request);
-    const shouldFallbackToUnassigned = !matchedEmp && (!key || !knownEmployeeKeys.has(key));
-    if (shouldFallbackToUnassigned) key = fallbackKey;
-    if (!key) return;
-    
+    const key = matchedEmp.key;
     const current = map.get(key) || {
       key,
-      employee_id: matchedEmp ? (matchedEmp.employee.id || matchedEmp.employee.employee_id || '') : (shouldFallbackToUnassigned ? '' : (request.responsible_employee_id || '')),
-      username: matchedEmp ? (matchedEmp.employee.username || '') : (shouldFallbackToUnassigned ? '' : (request.responsible_employee_username || '')),
-      full_name: matchedEmp ? (matchedEmp.employee.full_name || 'Xodim') : (shouldFallbackToUnassigned ? 'Biriktirilmagan' : (request.responsible_employee_name || 'Xodim biriktirilmagan')),
-      is_unassigned: shouldFallbackToUnassigned,
+      employee_id: matchedEmp.employee.id || matchedEmp.employee.employee_id || '',
+      username: matchedEmp.employee.username || '',
+      full_name: matchedEmp.employee.full_name || 'Xodim',
+      is_unassigned: false,
       open_requests: 0,
       chat_keys: new Set()
     };
@@ -6191,6 +6200,7 @@ function employeeSummaryRows(kind = 'requests') {
     if (key) openMap.delete(key);
   });
   openMap.forEach(row => {
+    if (isUnassignedRankingRow(row)) return;
     rowMap.set(row.key, {
       ...row,
       rank: '',

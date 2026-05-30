@@ -4,7 +4,7 @@ const { sendJson, readBody, getQuery } = require('../lib/http');
 const { optionalEnv, boolEnv } = require('../lib/env');
 const supabase = require('../lib/supabase');
 const { sendMessage, deleteMessage, reactToMessage, answerCallbackQuery, editMessageReplyMarkup, escapeHtml, tgUserName, getWebhookInfo, getMe, getChatMember, getFile, downloadFile } = require('../lib/telegram');
-const { getMessageText, classifyMessage, isGreetingOnly, isSmallTalk, isCompletionIntent } = require('../lib/parser');
+const { getMessageText, normalizeText, classifyMessage, isGreetingOnly, isSmallTalk, isCompletionIntent } = require('../lib/parser');
 const { getBotSettings } = require('../lib/bot-settings');
 const { resolveMainStatsChatId, sendMainStatsReport, buildMainStatsQuestionReply, isMainStatsQuestion } = require('../lib/report');
 const { shouldUseExternalAi, classifyWithAi, generateSupportReply, generateLocalSupportReply, generateClickUpTaskDraft } = require('../lib/ai');
@@ -2040,8 +2040,10 @@ async function classifyIncomingMessage({ text, chat, sourceType, updateKind, mes
 
   const mediaKind = detectIncomingMediaKind(message);
   let textForClassify = text;
+  let mediaResolution = null;
   try {
     const resolved = await resolveIncomingMessageText(message, settings);
+    mediaResolution = resolved;
     textForClassify = resolved.text || text;
     if (resolved.analysisText) message.analysis_text = resolved.analysisText;
   } catch (error) {
@@ -2076,6 +2078,15 @@ async function classifyIncomingMessage({ text, chat, sourceType, updateKind, mes
       || message.sticker
       || message.animation;
     if (hasMedia) classification = 'request';
+  }
+
+  const normalizedClassifyText = normalizeText(textForClassify || '');
+  const isVoicePlaceholder = mediaResolution?.source === 'voice_placeholder'
+    || (!normalizedClassifyText && ['voice', 'audio'].includes(mediaKind))
+    || (mediaKind === 'voice' && /^ovozli xabar$/i.test(normalizedClassifyText))
+    || (mediaKind === 'audio' && /^audio xabar$/i.test(normalizedClassifyText));
+  if (!employee && isVoicePlaceholder && ['message', 'ignore'].includes(classification)) {
+    classification = 'request';
   }
 
   return classification;
@@ -2516,11 +2527,6 @@ async function processMessage(updateKind, message) {
   });
   const effectiveText = getMessageText(message);
 
-  const isIgnoredStaff = employee && !isUyqurEmployee(employee);
-  if (isIgnoredStaff) {
-    classification = 'message';
-  }
-
   let savedMessage = null;
   try {
     savedMessage = await metrics.saveMessage({ message, updateKind, sourceType, classification, employee });
@@ -2556,15 +2562,11 @@ async function processMessage(updateKind, message) {
 
   if (await maybeReplyPrivateGreeting(updateKind, message, effectiveText)) return;
 
-  if (!isIgnoredStaff) {
-    if (await maybeCloseRequestFromReply(message, classification, employee, settings)) return;
-  }
+  if (await maybeCloseRequestFromReply(message, classification, employee, settings)) return;
 
   if (await maybeAnswerGroupQuestion({ updateKind, message, sourceType, text: effectiveText, settings, employee })) return;
 
-  if (!isIgnoredStaff) {
-    if (await maybeCloseRequestFromEmployeeAnswer(message, classification, employee, effectiveText, settings)) return;
-  }
+  if (await maybeCloseRequestFromEmployeeAnswer(message, classification, employee, effectiveText, settings)) return;
 
   if (isSupportRequestClassification(classification)) {
     try {
