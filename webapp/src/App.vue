@@ -2905,8 +2905,11 @@ function isUnassignedRankingRow(row = {}) {
 
 function shouldShowInSupportRanking(row = {}) {
   if (isUnassignedRankingRow(row)) return false;
-  if (row.is_manager_group) return true;
-  return isUyqurEmployee(row);
+  if (row.is_manager_group === true) return true;
+  const role = String(row.role || '').trim().toLowerCase();
+  if (role === 'manager') return false;
+  if (!isUyqurEmployee(row)) return false;
+  return Boolean(row.employee_id || row.tg_user_id || row.username);
 }
 
 function hasEmployeeActivity(row = {}) {
@@ -2985,13 +2988,22 @@ const supportPerformanceRows = computed(() => {
   ].filter(Boolean));
 
   topEmployeeRows.value.forEach(pRow => {
+    if (isUnassignedRankingRow(pRow)) return;
     const key = employeeSummaryKey(pRow);
     if (key) periodStatsMap.set(key, pRow);
   });
 
-  employees.value.filter(row => !isAdminLikeEmployee(row)).forEach(row => mergeSupportCandidate(merged, row, 'employee'));
-  (dashboard.employeeStats || []).forEach(row => mergeSupportCandidate(merged, row, 'stats'));
-  topEmployeeRows.value.forEach(row => mergeSupportCandidate(merged, row, 'period'));
+  employees.value
+    .filter(row => !isAdminLikeEmployee(row) && isUyqurEmployee(row) && !isManagerEmployee(row))
+    .forEach(row => mergeSupportCandidate(merged, row, 'employee'));
+  (dashboard.employeeStats || []).forEach(row => {
+    if (isUnassignedRankingRow(row)) return;
+    mergeSupportCandidate(merged, row, 'stats');
+  });
+  topEmployeeRows.value.forEach(row => {
+    if (isUnassignedRankingRow(row)) return;
+    mergeSupportCandidate(merged, row, 'period');
+  });
   visibleCompanyInfoRows.value.forEach(company => {
     if (!hasCompanySupport(company)) return;
     mergeSupportCandidate(merged, {
@@ -3003,7 +3015,7 @@ const supportPerformanceRows = computed(() => {
   });
 
   const candidateRows = [...merged.values()]
-    .filter(row => !isAdminLikeEmployee(row))
+    .filter(row => !isAdminLikeEmployee(row) && !isUnassignedRankingRow(row))
     .map((row, index) => {
     const stat = employeeStatsMap.value.get(employeeLookupKey(row)) || row;
     const candidate = { ...row, ...stat };
@@ -3062,8 +3074,7 @@ const supportPerformanceRows = computed(() => {
   });
 
   const rows = candidateRows
-    // Faqat bazada bor yoki Uyqur API'dan kelgan texnik yordam xodimlarini qoldiramiz
-    .filter(row => knownEmployeeKeys.has(supportRowKey(row)) && isUyqurEmployee(row));
+    .filter(row => shouldShowInSupportRanking(row) && knownEmployeeKeys.has(supportRowKey(row)));
 
   openSummaryMap.forEach(summary => {
     if (isUnassignedRankingRow(summary)) return;
@@ -6105,6 +6116,43 @@ function employeeSummaryKey(row = {}) {
   return String(row.full_name || row.responsible_employee_name || '').trim().toLowerCase();
 }
 
+function resolveCompanySupportMappingForRequest(request = {}, employeeMappings = []) {
+  const chatId = String(request.chat_id || '').trim();
+  const companyId = String(request.company_id || '').trim();
+  const companyName = normalizedCompanyName(request.company_name || request.chat_title || '');
+
+  const company = (visibleCompanyInfoRows.value || []).find(item => {
+    if (companyId && String(item.id || item.company_id || '').trim() === companyId) return true;
+    if (companyName && normalizedCompanyName(item.name) === companyName) return true;
+    if (!chatId) return false;
+    if (String(item.chat_id || '').trim() === chatId) return true;
+    return relatedCompanyChatStats(item).some(chat => String(chat.chat_id || '').trim() === chatId);
+  });
+  if (!company || !hasCompanySupport(company)) return null;
+
+  const username = normalizeSupportUsername(company.uyqur_support_username);
+  if (!username) return null;
+
+  let mapping = employeeMappings.find(item => item.username === username);
+  if (!mapping) {
+    const employee = employees.value.find(row => !isAdminLikeEmployee(row)
+      && normalizeSupportUsername(row.username) === username);
+    if (!employee || !isUyqurEmployee(employee)) return null;
+    mapping = {
+      employee,
+      key: employeeSummaryKey(employee),
+      username,
+      id: String(employee.id || employee.employee_id || '').trim(),
+      tg_user_id: String(employee.tg_user_id || '').trim(),
+      full_name: String(employee.full_name || '').trim().toLowerCase(),
+      companyIds: new Set(),
+      companyNames: new Set(),
+      chatIds: new Set()
+    };
+  }
+  return mapping;
+}
+
 function findEmployeeMappingForOpenRequest(request = {}, employeeMappings = []) {
   const reqEmpId = String(request.responsible_employee_id || request.employee_id || '').trim();
   if (reqEmpId) {
@@ -6119,18 +6167,21 @@ function findEmployeeMappingForOpenRequest(request = {}, employeeMappings = []) 
   }
 
   const reqEmpName = String(request.responsible_employee_name || request.support_name || '').trim().toLowerCase();
-  if (reqEmpName) {
+  if (reqEmpName && !isUnassignedRankingRow({ full_name: reqEmpName })) {
     const byName = employeeMappings.find(mapping => mapping.full_name === reqEmpName
       || (mapping.full_name && (mapping.full_name.includes(reqEmpName) || reqEmpName.includes(mapping.full_name))));
     if (byName) return byName;
   }
 
-  return employeeMappings.find(mapping => {
+  const byCompanyScope = employeeMappings.find(mapping => {
     if (request.company_id && mapping.companyIds.has(String(request.company_id).trim())) return true;
     if (request.company_name && mapping.companyNames.has(normalizedCompanyName(request.company_name))) return true;
     if (request.chat_id && mapping.chatIds.has(String(request.chat_id).trim())) return true;
     return false;
-  }) || null;
+  });
+  if (byCompanyScope) return byCompanyScope;
+
+  return resolveCompanySupportMappingForRequest(request, employeeMappings);
 }
 
 function employeeOpenRequestSummaryMap() {
