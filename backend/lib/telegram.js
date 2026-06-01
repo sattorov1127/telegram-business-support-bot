@@ -2,16 +2,21 @@
 
 const { requiredEnv } = require('./env');
 
-function apiUrl(method) {
-  return `https://api.telegram.org/bot${requiredEnv('BOT_TOKEN')}/${method}`;
+function resolveToken(token) {
+  const candidate = typeof token === 'string' ? token.trim() : '';
+  return candidate || requiredEnv('BOT_TOKEN');
 }
 
-function fileApiUrl(filePath) {
-  return `https://api.telegram.org/file/bot${requiredEnv('BOT_TOKEN')}/${filePath}`;
+function apiUrl(method, token) {
+  return `https://api.telegram.org/bot${resolveToken(token)}/${method}`;
 }
 
-async function telegram(method, payload = {}) {
-  const response = await fetch(apiUrl(method), {
+function fileApiUrl(filePath, token) {
+  return `https://api.telegram.org/file/bot${resolveToken(token)}/${filePath}`;
+}
+
+async function telegram(method, payload = {}, { token } = {}) {
+  const response = await fetch(apiUrl(method, token), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload)
@@ -111,6 +116,10 @@ async function getFile(fileId) {
   return telegram('getFile', { file_id: fileId });
 }
 
+async function getFileWithToken(token, fileId) {
+  return telegram('getFile', { file_id: fileId }, { token });
+}
+
 async function getUserProfilePhotos(userId, options = {}) {
   return telegram('getUserProfilePhotos', {
     user_id: userId,
@@ -121,6 +130,14 @@ async function getUserProfilePhotos(userId, options = {}) {
 
 async function downloadFile(filePath) {
   const response = await fetch(fileApiUrl(filePath));
+  if (!response.ok) {
+    throw new Error(`Telegram file download: ${response.statusText || response.status}`);
+  }
+  return response;
+}
+
+async function downloadFileWithToken(token, filePath) {
+  const response = await fetch(fileApiUrl(filePath, token));
   if (!response.ok) {
     throw new Error(`Telegram file download: ${response.statusText || response.status}`);
   }
@@ -139,4 +156,4 @@ function escapeHtml(str = '') {
     .replaceAll('"', '&quot;');
 }
 
-module.exports = { telegram, sendMessage, deleteMessage, reactToMessage, sendBusinessMessage, answerCallbackQuery, editMessageReplyMarkup, getWebhookInfo, getMe, getChatMember, setWebhook, deleteWebhook, getUpdates, getFile, getUserProfilePhotos, downloadFile, tgUserName, escapeHtml };
+module.exports = { telegram, sendMessage, deleteMessage, reactToMessage, sendBusinessMessage, answerCallbackQuery, editMessageReplyMarkup, getWebhookInfo, getMe, getChatMember, setWebhook, deleteWebhook, getUpdates, getFile, getFileWithToken, getUserProfilePhotos, downloadFile, downloadFileWithToken, tgUserName, escapeHtml };

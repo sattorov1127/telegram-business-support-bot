@@ -9,6 +9,7 @@ const { getBotSettings } = require('../lib/bot-settings');
 const { resolveMainStatsChatId, sendMainStatsReport, buildMainStatsQuestionReply, isMainStatsQuestion } = require('../lib/report');
 const { shouldUseExternalAi, classifyWithAi, generateSupportReply, generateLocalSupportReply, generateClickUpTaskDraft } = require('../lib/ai');
 const { detectIncomingMediaKind, resolveIncomingMessageText } = require('../lib/media-analysis');
+const { enrichMessageMediaWithStorage } = require('../lib/media-relay');
 const { normalizeClickUpIntegration, isClickUpIntegrationReady, createClickUpTask, updateClickUpTaskStatus, attachClickUpTaskFile } = require('../lib/clickup');
 const { notifyIncomingLog, notifyOperationalError } = require('../lib/log-notifier');
 const metrics = require('../lib/metrics');
@@ -2425,7 +2426,7 @@ async function handleCommand(updateKind, message, sourceType, text, classificati
   await Promise.all([safeTracking, reply]);
 }
 
-async function processMessage(updateKind, message) {
+async function processMessage(updateKind, message, options = {}) {
   const chat = message.chat || {};
   const from = message.from || {};
   const text = getMessageText(message);
@@ -2434,6 +2435,16 @@ async function processMessage(updateKind, message) {
     const settings = await getBotSettings();
     await maybeRelayIncomingLog(updateKind, message, settings);
     return;
+  }
+
+  if (options.sourceBot) {
+    try {
+      await enrichMessageMediaWithStorage(message, options.sourceBot, {
+        onError: (error, kind) => logBackgroundError(`media-relay:${kind}`, error)
+      });
+    } catch (error) {
+      logBackgroundError('media-relay', error);
+    }
   }
 
   const sourceType = metrics.sourceTypeFrom(updateKind, chat.type);
@@ -2603,7 +2614,7 @@ async function processMessage(updateKind, message) {
   if (await maybeReplyPrivateFallback(updateKind, message, classification)) return;
 }
 
-async function handleTelegramUpdate(update = {}) {
+async function handleTelegramUpdate(update = {}, options = {}) {
   console.info('[bot:update]', summarizeUpdate(update));
 
   if (update.business_connection) {
@@ -2632,7 +2643,7 @@ async function handleTelegramUpdate(update = {}) {
 
   const picked = pickMessage(update);
   if (picked && picked.message) {
-    await processMessage(picked.kind, picked.message);
+    await processMessage(picked.kind, picked.message, options);
     return { ok: true, handled: picked.kind };
   }
 
@@ -2655,8 +2666,10 @@ async function handler(req, res) {
   }
 
   try {
+    const query = getQuery(req);
+    const sourceBot = String(query.source_bot || '').trim().toLowerCase();
     const update = await readBody(req);
-    return sendJson(res, 200, await handleTelegramUpdate(update));
+    return sendJson(res, 200, await handleTelegramUpdate(update, { sourceBot }));
   } catch (error) {
     console.error('[bot:error]', error);
     notifyOperationalError('bot:error', error).catch(logError => console.error('[bot:notify-log:error]', logError));

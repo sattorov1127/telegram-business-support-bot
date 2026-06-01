@@ -37,6 +37,8 @@ function buildMediaPayload(kind, source = {}, extra = {}) {
     width: source.width || null,
     height: source.height || null,
     duration: source.duration || null,
+    storage_path: source.storage_path || null,
+    storage_bucket: source.storage_bucket || null,
     ...extra
   };
 }

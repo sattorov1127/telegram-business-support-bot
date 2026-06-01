@@ -2548,7 +2548,7 @@ async function testTelegramFileRejectsLargeVideoBeforeDownload() {
           result: {
             file_id: 'big-video',
             file_path: 'videos/file_99.mp4',
-            file_size: 9 * 1024 * 1024
+            file_size: 25 * 1024 * 1024
           }
         })
       };
@@ -2562,7 +2562,7 @@ async function testTelegramFileRejectsLargeVideoBeforeDownload() {
       query: { file_id: 'big-video', mime_type: 'video/mp4', file_name: 'clip.mp4' }
     });
     assert.strictEqual(result.status, 400);
-    assert.match(result.payload.error, /juda katta|4 MB/i);
+    assert.match(result.payload.error, /juda katta|20(\.0)? MB/i);
     assert.strictEqual(downloadCalled, false);
   } finally {
     global.fetch = originalFetch;

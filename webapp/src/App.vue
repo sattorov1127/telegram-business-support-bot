@@ -1458,13 +1458,17 @@
                               @click="retryMediaLoad(message.media)">{{
                                 mediaPlaceholder(message.media) }}</button>
                             <template v-else-if="isAudioMedia(message.media)">
-                              <audio v-if="mediaUrl(message.media)" class="chat-media-audio" controls preload="metadata">
-                                <source :src="mediaUrl(message.media)" :type="audioMediaMimeType(message.media)" />
-                              </audio>
+                              <audio v-if="mediaAudioReady(message.media)" :key="mediaAudioKey(message.media)"
+                                class="chat-media-audio" controls preload="auto" playsinline
+                                :src="mediaUrl(message.media)" @error="onAudioPlaybackError(message.media)" />
                               <button v-else type="button" class="chat-media-placeholder chat-media-open"
+                                :title="mediaErrors[message.media.file_id] || undefined"
                                 @click="retryMediaLoad(message.media)">{{ mediaPlaceholder(message.media) }}</button>
+                              <button v-if="mediaUrl(message.media)" type="button" class="chat-media-link chat-media-open"
+                                @click="retryMediaLoad(message.media)">Qayta yuklash</button>
                               <a v-if="mediaUrl(message.media)" class="chat-media-link" :href="mediaUrl(message.media)"
-                                target="_blank" rel="noopener noreferrer">{{ mediaOpenLabel(message.media) }}</a>
+                                :download="mediaDownloadName(message.media)" target="_blank"
+                                rel="noopener noreferrer">{{ mediaOpenLabel(message.media) }}</a>
                             </template>
                             <a v-else-if="isDocumentMedia(message.media) && mediaUrl(message.media)"
                               class="chat-media-file" :href="mediaUrl(message.media)" target="_blank"
@@ -1654,13 +1658,17 @@
                               @click="retryMediaLoad(message.media)">{{
                                 mediaPlaceholder(message.media) }}</button>
                             <template v-else-if="isAudioMedia(message.media)">
-                              <audio v-if="mediaUrl(message.media)" class="chat-media-audio" controls preload="metadata">
-                                <source :src="mediaUrl(message.media)" :type="audioMediaMimeType(message.media)" />
-                              </audio>
+                              <audio v-if="mediaAudioReady(message.media)" :key="mediaAudioKey(message.media)"
+                                class="chat-media-audio" controls preload="auto" playsinline
+                                :src="mediaUrl(message.media)" @error="onAudioPlaybackError(message.media)" />
                               <button v-else type="button" class="chat-media-placeholder chat-media-open"
+                                :title="mediaErrors[message.media.file_id] || undefined"
                                 @click="retryMediaLoad(message.media)">{{ mediaPlaceholder(message.media) }}</button>
+                              <button v-if="mediaUrl(message.media)" type="button" class="chat-media-link chat-media-open"
+                                @click="retryMediaLoad(message.media)">Qayta yuklash</button>
                               <a v-if="mediaUrl(message.media)" class="chat-media-link" :href="mediaUrl(message.media)"
-                                target="_blank" rel="noopener noreferrer">{{ mediaOpenLabel(message.media) }}</a>
+                                :download="mediaDownloadName(message.media)" target="_blank"
+                                rel="noopener noreferrer">{{ mediaOpenLabel(message.media) }}</a>
                             </template>
                             <a v-else-if="isDocumentMedia(message.media) && mediaUrl(message.media)"
                               class="chat-media-file" :href="mediaUrl(message.media)" target="_blank"
@@ -1944,13 +1952,17 @@
                               @click="retryMediaLoad(message.media)">{{
                                 mediaPlaceholder(message.media) }}</button>
                             <template v-else-if="isAudioMedia(message.media)">
-                              <audio v-if="mediaUrl(message.media)" class="chat-media-audio" controls preload="metadata">
-                                <source :src="mediaUrl(message.media)" :type="audioMediaMimeType(message.media)" />
-                              </audio>
+                              <audio v-if="mediaAudioReady(message.media)" :key="mediaAudioKey(message.media)"
+                                class="chat-media-audio" controls preload="auto" playsinline
+                                :src="mediaUrl(message.media)" @error="onAudioPlaybackError(message.media)" />
                               <button v-else type="button" class="chat-media-placeholder chat-media-open"
+                                :title="mediaErrors[message.media.file_id] || undefined"
                                 @click="retryMediaLoad(message.media)">{{ mediaPlaceholder(message.media) }}</button>
+                              <button v-if="mediaUrl(message.media)" type="button" class="chat-media-link chat-media-open"
+                                @click="retryMediaLoad(message.media)">Qayta yuklash</button>
                               <a v-if="mediaUrl(message.media)" class="chat-media-link" :href="mediaUrl(message.media)"
-                                target="_blank" rel="noopener noreferrer">{{ mediaOpenLabel(message.media) }}</a>
+                                :download="mediaDownloadName(message.media)" target="_blank"
+                                rel="noopener noreferrer">{{ mediaOpenLabel(message.media) }}</a>
                             </template>
                             <a v-else-if="isDocumentMedia(message.media) && mediaUrl(message.media)"
                               class="chat-media-file" :href="mediaUrl(message.media)" target="_blank"
@@ -2172,13 +2184,17 @@
                         @click="retryMediaLoad(message.media)">{{
                           mediaPlaceholder(message.media) }}</button>
                       <template v-else-if="isAudioMedia(message.media)">
-                        <audio v-if="mediaUrl(message.media)" class="chat-media-audio" controls preload="metadata">
-                          <source :src="mediaUrl(message.media)" :type="audioMediaMimeType(message.media)" />
-                        </audio>
+                        <audio v-if="mediaAudioReady(message.media)" :key="mediaAudioKey(message.media)"
+                          class="chat-media-audio" controls preload="auto" playsinline
+                          :src="mediaUrl(message.media)" @error="onAudioPlaybackError(message.media)" />
                         <button v-else type="button" class="chat-media-placeholder chat-media-open"
+                          :title="mediaErrors[message.media.file_id] || undefined"
                           @click="retryMediaLoad(message.media)">{{ mediaPlaceholder(message.media) }}</button>
+                        <button v-if="mediaUrl(message.media)" type="button" class="chat-media-link chat-media-open"
+                          @click="retryMediaLoad(message.media)">Qayta yuklash</button>
                         <a v-if="mediaUrl(message.media)" class="chat-media-link" :href="mediaUrl(message.media)"
-                          target="_blank" rel="noopener noreferrer">{{ mediaOpenLabel(message.media) }}</a>
+                          :download="mediaDownloadName(message.media)" target="_blank"
+                          rel="noopener noreferrer">{{ mediaOpenLabel(message.media) }}</a>
                       </template>
                       <a v-else-if="isDocumentMedia(message.media) && mediaUrl(message.media)" class="chat-media-file"
                         :href="mediaUrl(message.media)" target="_blank" rel="noopener noreferrer">{{
@@ -4832,10 +4848,38 @@ function isAudioMedia(media) {
 
 function audioMediaMimeType(media = {}) {
   const mime = String(media.mime_type || '').trim().toLowerCase();
+  if (mime.includes('ogg') || mime.includes('opus')) {
+    return mime.includes('codecs') ? mime : 'audio/ogg; codecs=opus';
+  }
   if (mime) return mime;
-  if (media.kind === 'voice') return 'audio/ogg';
+  if (media.kind === 'voice') return 'audio/ogg; codecs=opus';
   if (media.kind === 'audio') return 'audio/mpeg';
-  return 'audio/ogg';
+  return 'audio/ogg; codecs=opus';
+}
+
+function mediaAudioKey(media = {}) {
+  const fileId = media?.file_id || '';
+  return fileId ? `${fileId}:${mediaUrl(media)}` : '';
+}
+
+function mediaAudioReady(media = {}) {
+  return Boolean(media?.file_id && mediaUrl(media) && !mediaErrors.value[media.file_id]);
+}
+
+function mediaDownloadName(media = {}) {
+  if (media?.file_name) return media.file_name;
+  if (media?.kind === 'voice') return 'voice.ogg';
+  if (media?.kind === 'audio') return 'audio.mp3';
+  return 'telegram-audio';
+}
+
+function onAudioPlaybackError(media = {}) {
+  const fileId = media?.file_id;
+  if (!fileId) return;
+  mediaErrors.value = {
+    ...mediaErrors.value,
+    [fileId]: 'Brauzer ovozni ijro eta olmadi. Qayta yuklash yoki havolani yangi oynada oching.'
+  };
 }
 
 function isDocumentMedia(media) {
@@ -5001,7 +5045,21 @@ function companyTicketOpenStyle(row = {}) {
 }
 
 async function retryMediaLoad(media) {
-  if (!media || !media.file_id) return;
+  if (!media?.file_id) return;
+  const fileId = media.file_id;
+  const existing = mediaUrls.value[fileId];
+  if (existing) {
+    try { URL.revokeObjectURL(existing); } catch (_error) { }
+    const nextUrls = { ...mediaUrls.value };
+    delete nextUrls[fileId];
+    mediaUrls.value = nextUrls;
+  }
+  const nextErrors = { ...mediaErrors.value };
+  delete nextErrors[fileId];
+  mediaErrors.value = nextErrors;
+  const nextLoading = { ...mediaLoading.value };
+  delete nextLoading[fileId];
+  mediaLoading.value = nextLoading;
   await loadConversationMedia([{ media }]);
 }
 

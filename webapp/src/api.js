@@ -88,7 +88,9 @@ function telegramFileQuery(mediaOrFileId) {
   return safeQuery({
     file_id: media.file_id,
     mime_type: media.mime_type,
-    file_name: media.file_name
+    file_name: media.file_name,
+    storage_path: media.storage_path,
+    storage_bucket: media.storage_bucket
   });
 }
 
