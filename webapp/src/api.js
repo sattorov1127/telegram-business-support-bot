@@ -74,7 +74,10 @@ async function requestBlob(action, { query = {} } = {}) {
     logApiError(action, error, { method: 'GET', query: safeQuery(query), status: response.status, stage: 'response' });
     throw error;
   }
-  const contentType = String(response.headers.get('content-type') || '').split(';')[0].trim();
+  const headerType = String(response.headers.get('content-type') || '').split(';')[0].trim().toLowerCase();
+  const requestedType = String(query.mime_type || '').split(';')[0].trim().toLowerCase();
+  const generic = !headerType || headerType === 'application/octet-stream' || headerType === 'binary/octet-stream';
+  const contentType = generic && requestedType ? requestedType : (headerType || requestedType);
   const buffer = await response.arrayBuffer();
   return contentType ? new Blob([buffer], { type: contentType }) : new Blob([buffer]);
 }

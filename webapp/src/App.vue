@@ -1458,8 +1458,9 @@
                               @click="retryMediaLoad(message.media)">{{
                                 mediaPlaceholder(message.media) }}</button>
                             <template v-else-if="isAudioMedia(message.media)">
-                              <audio v-if="mediaUrl(message.media)" class="chat-media-audio"
-                                :src="mediaUrl(message.media)" controls></audio>
+                              <audio v-if="mediaUrl(message.media)" class="chat-media-audio" controls preload="metadata">
+                                <source :src="mediaUrl(message.media)" :type="audioMediaMimeType(message.media)" />
+                              </audio>
                               <button v-else type="button" class="chat-media-placeholder chat-media-open"
                                 @click="retryMediaLoad(message.media)">{{ mediaPlaceholder(message.media) }}</button>
                               <a v-if="mediaUrl(message.media)" class="chat-media-link" :href="mediaUrl(message.media)"
@@ -1653,8 +1654,9 @@
                               @click="retryMediaLoad(message.media)">{{
                                 mediaPlaceholder(message.media) }}</button>
                             <template v-else-if="isAudioMedia(message.media)">
-                              <audio v-if="mediaUrl(message.media)" class="chat-media-audio"
-                                :src="mediaUrl(message.media)" controls></audio>
+                              <audio v-if="mediaUrl(message.media)" class="chat-media-audio" controls preload="metadata">
+                                <source :src="mediaUrl(message.media)" :type="audioMediaMimeType(message.media)" />
+                              </audio>
                               <button v-else type="button" class="chat-media-placeholder chat-media-open"
                                 @click="retryMediaLoad(message.media)">{{ mediaPlaceholder(message.media) }}</button>
                               <a v-if="mediaUrl(message.media)" class="chat-media-link" :href="mediaUrl(message.media)"
@@ -1942,8 +1944,9 @@
                               @click="retryMediaLoad(message.media)">{{
                                 mediaPlaceholder(message.media) }}</button>
                             <template v-else-if="isAudioMedia(message.media)">
-                              <audio v-if="mediaUrl(message.media)" class="chat-media-audio"
-                                :src="mediaUrl(message.media)" controls></audio>
+                              <audio v-if="mediaUrl(message.media)" class="chat-media-audio" controls preload="metadata">
+                                <source :src="mediaUrl(message.media)" :type="audioMediaMimeType(message.media)" />
+                              </audio>
                               <button v-else type="button" class="chat-media-placeholder chat-media-open"
                                 @click="retryMediaLoad(message.media)">{{ mediaPlaceholder(message.media) }}</button>
                               <a v-if="mediaUrl(message.media)" class="chat-media-link" :href="mediaUrl(message.media)"
@@ -2169,8 +2172,9 @@
                         @click="retryMediaLoad(message.media)">{{
                           mediaPlaceholder(message.media) }}</button>
                       <template v-else-if="isAudioMedia(message.media)">
-                        <audio v-if="mediaUrl(message.media)" class="chat-media-audio" :src="mediaUrl(message.media)"
-                          controls></audio>
+                        <audio v-if="mediaUrl(message.media)" class="chat-media-audio" controls preload="metadata">
+                          <source :src="mediaUrl(message.media)" :type="audioMediaMimeType(message.media)" />
+                        </audio>
                         <button v-else type="button" class="chat-media-placeholder chat-media-open"
                           @click="retryMediaLoad(message.media)">{{ mediaPlaceholder(message.media) }}</button>
                         <a v-if="mediaUrl(message.media)" class="chat-media-link" :href="mediaUrl(message.media)"
@@ -4826,6 +4830,14 @@ function isAudioMedia(media) {
   return ['voice', 'audio'].includes(media?.kind);
 }
 
+function audioMediaMimeType(media = {}) {
+  const mime = String(media.mime_type || '').trim().toLowerCase();
+  if (mime) return mime;
+  if (media.kind === 'voice') return 'audio/ogg';
+  if (media.kind === 'audio') return 'audio/mpeg';
+  return 'audio/ogg';
+}
+
 function isDocumentMedia(media) {
   return media?.kind === 'document';
 }
@@ -5005,7 +5017,9 @@ async function loadConversationMedia(messages = []) {
     mediaLoading.value = { ...mediaLoading.value, [media.file_id]: true };
     try {
       const blob = await api.telegramFile(media);
-      const url = URL.createObjectURL(blob);
+      const bytes = await blob.arrayBuffer();
+      const mimeType = audioMediaMimeType(media) || blob.type || 'application/octet-stream';
+      const url = URL.createObjectURL(new Blob([bytes], { type: mimeType }));
       if (loadToken !== mediaLoadToken) {
         URL.revokeObjectURL(url);
         return;
